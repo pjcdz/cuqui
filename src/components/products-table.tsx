@@ -13,17 +13,18 @@ import {
 import { Card } from "@/components/ui/card";
 
 export function ProductsTable() {
-  const { data, isLoading } = useQuery(api.products.list);
+  const products = useQuery(api.products.list);
 
-  if (isLoading) {
+  // Handle undefined during initial load
+  if (products === undefined) {
     return (
       <Card className="p-6">
-        <p className="text-muted-foreground">Cargando productos...</p>
+        <p className="text-muted-foreground">Conectando a Convex...</p>
       </Card>
     );
   }
 
-  if (!data || data.length === 0) {
+  if (products.length === 0) {
     return (
       <Card className="p-6">
         <p className="text-muted-foreground">No hay productos disponibles</p>
@@ -45,7 +46,7 @@ export function ProductsTable() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((product) => (
+          {products.map((product) => (
             <TableRow key={product._id}>
               <TableCell className="font-medium">{product.name}</TableCell>
               <TableCell>{product.brand}</TableCell>

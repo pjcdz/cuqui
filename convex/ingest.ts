@@ -3,7 +3,12 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import fs from "node:fs/promises";
+import * as fs from "node:fs/promises";
+import {
+  GoogleGenAI,
+  createUserContent,
+  createPartFromUri,
+} from "@google/genai";
 
 const EXTRACT_PROMPT = `Extrae productos de este catálogo en JSON:
 {
@@ -25,66 +30,46 @@ export const ingestCatalog = action({
     mimeType: v.string(),
   },
   handler: async (ctx, args) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
     // 1. Guardar archivo temporalmente
     const buffer = Buffer.from(args.fileBase64, "base64");
     const tempPath = `/tmp/${Date.now()}.pdf`;
     await fs.writeFile(tempPath, buffer);
 
     try {
-      // 2. Usar Files API de Gemini via fetch
-      const uploadResponse = await fetch(
-        `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "X-Goog-Upload-Protocol": "raw",
-          },
-          body: buffer,
-        }
-      );
+      // 2. Upload a Gemini Files API
+      const myfile = await ai.files.upload({
+        file: tempPath,
+        config: { mimeType: args.mimeType },
+      });
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload file: ${uploadResponse.statusText}`);
+      // Validate required file properties
+      if (!myfile.uri || !myfile.mimeType) {
+        throw new Error("File upload did not return required URI or mimeType");
       }
 
-      const uploadResult = await uploadResponse.json();
-      const fileUri = uploadResult.file?.uri;
+      // 3. Generar contenido con JSON response
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: createUserContent([
+          createPartFromUri(myfile.uri, myfile.mimeType),
+          EXTRACT_PROMPT,
+        ]),
+        config: {
+          responseMimeType: "application/json",
+        },
+      });
 
-      if (!fileUri) {
-        throw new Error("No file URI returned from upload");
+      // Validate response text before parsing
+      if (!response.text) {
+        throw new Error("Gemini response did not contain text");
       }
 
-      // 3. Generar contenido con el archivo
-      const generateResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-thinking-exp:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { file_data: { mime_type: args.mimeType, file_uri: fileUri } },
-                { text: EXTRACT_PROMPT }
-              ]
-            }],
-            generationConfig: {
-              response_mime_type: "application/json",
-            }
-          }),
-        }
-      );
-
-      if (!generateResponse.ok) {
-        throw new Error(`Failed to generate content: ${generateResponse.statusText}`);
-      }
-
-      const result = await generateResponse.json();
-      const parsed = JSON.parse(result.candidates[0].content.parts[0].text);
+      const result = JSON.parse(response.text);
 
       // 4. Guardar todo de una vez (SIN BATCHES)
-      for (const product of parsed.items) {
+      for (const product of result.items) {
         await ctx.runMutation(api.products.create, {
           name: product.name,
           brand: product.brand,
@@ -96,11 +81,10 @@ export const ingestCatalog = action({
         });
       }
 
-      return { processed: parsed.items.length };
-
+      return { processed: result.items.length };
     } finally {
       // 5. Cleanup
       await fs.unlink(tempPath);
     }
-  }
+  },
 });

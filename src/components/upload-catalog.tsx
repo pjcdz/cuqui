@@ -11,6 +11,16 @@ import { Upload } from "lucide-react";
 
 export function CatalogUpload() {
   const ingest = useAction(api.ingest.ingestCatalog);
+
+  // Handle undefined during initial load
+  if (!ingest) {
+    return (
+      <Card className="p-6">
+        <p className="text-muted-foreground">Conectando a Convex...</p>
+      </Card>
+    );
+  }
+
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
