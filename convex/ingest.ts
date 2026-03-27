@@ -174,7 +174,7 @@ export const ingestCatalogSingleStage = action({
           price: product.price,
           category: product.category,
           tags: product.tags,
-          providerId: "temp-provider", // TODO: Get from auth
+          // Note: providerId removed - not in schema, will be added in Unit 7
         });
       }
 

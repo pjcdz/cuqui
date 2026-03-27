@@ -237,20 +237,20 @@ export const DocumentMetadataJsonSchema: JsonSchema = zodToJsonSchema(
 ) as JsonSchema;
 
 export const ProductExtractionJsonSchema: JsonSchema = zodToJsonSchema(
-  ProductExtractionSchema,
+  ProductExtractionSchema as any,
   {
     name: "ProductExtraction",
     target: "openApi3",
   }
-) as any;
+) as JsonSchema;
 
 export const ProductChunkResponseJsonSchema: JsonSchema = zodToJsonSchema(
-  ProductChunkResponseSchema,
+  ProductChunkResponseSchema as any,
   {
     name: "ProductChunkResponse",
     target: "openApi3",
   }
-) as any;
+) as JsonSchema;
 
 // Export with expected names for ingest.ts
 export const DOCUMENT_METADATA_JSON_SCHEMA = DocumentMetadataJsonSchema;
