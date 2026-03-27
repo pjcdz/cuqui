@@ -9,6 +9,12 @@ import {
   createUserContent,
   createPartFromUri,
 } from "@google/genai";
+import {
+  DocumentMetadataSchema,
+  type DocumentMetadata,
+  DOCUMENT_METADATA_JSON_SCHEMA,
+  DOCUMENT_METADATA_PROMPT,
+} from "./lib/schemas";
 
 const EXTRACT_PROMPT = `Extrae productos de este catálogo en JSON:
 {
@@ -24,7 +30,96 @@ const EXTRACT_PROMPT = `Extrae productos de este catálogo en JSON:
   ]
 }`;
 
-export const ingestCatalog = action({
+/**
+ * Stage 1: Extract document metadata using high-capacity model
+ * Analyzes global document structure, formatting, and ambiguities
+ *
+ * @param ai - GoogleGenAI client instance
+ * @param fileUri - URI of uploaded file in Gemini Files API
+ * @param mimeType - MIME type of the file
+ * @returns Validated document metadata
+ */
+async function extractDocumentMetadata(
+  ai: GoogleGenAI,
+  fileUri: string,
+  mimeType: string
+): Promise<DocumentMetadata> {
+  console.log("Stage 1: Starting document metadata extraction with gemini-3.1-pro");
+
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Stage 1: Attempt ${attempt}/${maxRetries}`);
+
+      // Use gemini-3.1-pro for high-capacity analysis
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro",
+        contents: createUserContent([
+          createPartFromUri(fileUri, mimeType),
+          DOCUMENT_METADATA_PROMPT,
+        ]),
+        config: {
+          responseMimeType: "application/json",
+          responseJsonSchema: DOCUMENT_METADATA_JSON_SCHEMA,
+        },
+      });
+
+      // Validate response
+      if (!response.text) {
+        throw new Error("Stage 1: Gemini response did not contain text");
+      }
+
+      console.log("Stage 1: Raw response received, parsing JSON");
+
+      // Parse JSON response
+      const parsed = JSON.parse(response.text);
+
+      // Validate with Zod schema
+      const validated = DocumentMetadataSchema.parse(parsed);
+
+      console.log("Stage 1: Metadata extraction successful");
+      console.log(`  - Document type: ${validated.documentType}`);
+      console.log(`  - Language: ${validated.language}`);
+      console.log(`  - Currency: ${validated.currency}`);
+      console.log(`  - Pages: ${validated.pages}`);
+      console.log(`  - Sections: ${validated.sections.length}`);
+      console.log(`  - Tables: ${validated.tables}`);
+      console.log(`  - Ambiguities: ${validated.ambiguities.length}`);
+
+      if (validated.ambiguities.length > 0) {
+        console.log("  ⚠️  Ambiguities detected:");
+        validated.ambiguities.forEach((ambiguity, i) => {
+          console.log(`    ${i + 1}. ${ambiguity}`);
+        });
+      }
+
+      return validated;
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`Stage 1: Attempt ${attempt} failed:`, error);
+
+      if (attempt < maxRetries) {
+        // Exponential backoff: 2^attempt seconds
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.log(`Stage 1: Retrying in ${backoffMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  // All retries exhausted
+  throw new Error(
+    `Stage 1: Failed after ${maxRetries} attempts. Last error: ${lastError?.message}`
+  );
+}
+
+/**
+ * Original single-stage ingestion (kept as fallback)
+ * Processes entire catalog in one pass with gemini-3.1-flash-lite-preview
+ */
+export const ingestCatalogSingleStage = action({
   args: {
     fileBase64: v.string(),
     mimeType: v.string(),
@@ -88,3 +183,9 @@ export const ingestCatalog = action({
     }
   },
 });
+
+/**
+ * Alias for backward compatibility
+ * Points to single-stage implementation (original behavior)
+ */
+export const ingestCatalog = ingestCatalogSingleStage;
