@@ -252,6 +252,66 @@ export const ProductChunkResponseJsonSchema: JsonSchema = zodToJsonSchema(
   }
 ) as any;
 
+// Export with expected names for ingest.ts
+export const DOCUMENT_METADATA_JSON_SCHEMA = DocumentMetadataJsonSchema;
+export const PRODUCT_EXTRACTION_JSON_SCHEMA = ProductExtractionJsonSchema;
+export const PRODUCT_CHUNK_JSON_SCHEMA = ProductChunkResponseJsonSchema;
+
+// ============================================================================
+// Prompts for AI Models
+// ============================================================================
+
+export const DOCUMENT_METADATA_PROMPT = `
+You are analyzing a PDF document for a B2B catalog ingestion system.
+
+Your task is to extract comprehensive metadata about this document including:
+1. Document type (price-list, catalog, invoice, order-form)
+2. Language and currency
+3. Page-by-page layout analysis (tables, lists, mixed)
+4. Section structure (categories, chapters)
+5. Table detection with row counts
+6. Column headers in tables
+7. Global interpretation rules
+8. Any ambiguous aspects that need human review
+
+Focus on accuracy. If unsure about something, mark it in ambiguityNotes.
+
+Return JSON following the provided schema.
+`;
+
+export const PRODUCT_EXTRACTION_PROMPT = (metadata: any, chunk: any) => `
+You are extracting products from a B2B catalog document.
+
+DOCUMENT CONTEXT:
+- Type: ${metadata.documentType}
+- Language: ${metadata.language}
+- Currency: ${metadata.currency}
+
+${metadata.globalRules ? `Global rules:\n${metadata.globalRules.join('\n')}\n` : ''}
+
+${chunk.sectionTitle ? `Section: ${chunk.sectionTitle}\n` : ''}
+
+TASK: Extract products from pages ${chunk.pageRange.start}-${chunk.pageRange.end}.
+
+For each product, provide:
+- Raw text from document
+- Normalized name (e.g., "Leche Entera")
+- Brand (normalized lowercase)
+- Category
+- Tags for navigation (e.g., ["lacteos", "leches", "serenisima"])
+- Packaging info (type, format, quantities)
+- Price with type (per-pack, per-unit, etc.)
+
+CRITICAL:
+- If confidence < 0.7 or information is ambiguous, set status: "needs-review"
+- If unclear about packaging, sale format, or price type, mark as needs-review
+- Estimate confidence honestly (0.5-1.0 range)
+
+Expected product count: ~${chunk.estimatedItems}
+
+Return JSON following the provided schema.
+`;
+
 // ============================================================================
 // Export All
 // ============================================================================

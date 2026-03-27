@@ -83,14 +83,16 @@ async function extractDocumentMetadata(
       console.log(`  - Document type: ${validated.documentType}`);
       console.log(`  - Language: ${validated.language}`);
       console.log(`  - Currency: ${validated.currency}`);
-      console.log(`  - Pages: ${validated.pages}`);
-      console.log(`  - Sections: ${validated.sections.length}`);
-      console.log(`  - Tables: ${validated.tables}`);
-      console.log(`  - Ambiguities: ${validated.ambiguities.length}`);
+      console.log(`  - Pages: ${validated.pages.length}`);
+      console.log(`  - Sections: ${validated.sections?.length || 0}`);
 
-      if (validated.ambiguities.length > 0) {
+      const tablesCount = validated.pages.reduce((sum, page) => sum + (page.tables?.length || 0), 0);
+      console.log(`  - Tables: ${tablesCount}`);
+
+      if (validated.ambiguityNotes && validated.ambiguityNotes.length > 0) {
+        console.log(`  - Ambiguities: ${validated.ambiguityNotes.length}`);
         console.log("  ⚠️  Ambiguities detected:");
-        validated.ambiguities.forEach((ambiguity, i) => {
+        validated.ambiguityNotes.forEach((ambiguity, i) => {
           console.log(`    ${i + 1}. ${ambiguity}`);
         });
       }
