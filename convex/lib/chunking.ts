@@ -92,7 +92,6 @@ export function buildChunksFromMetadata(
 
     if (lastPageHasTable && chunkEnd < totalPages) {
       // Look ahead to find where the table ends
-      // Use direct array access since pageNumber is 1-indexed
       let nextPage = chunkEnd + 1;
       while (nextPage <= totalPages) {
         const nextPageMeta = metadata.pages[nextPage - 1]; // Convert to 0-indexed
