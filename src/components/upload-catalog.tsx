@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
 
 export function CatalogUpload() {
   const ingest = useAction(api.ingest.ingestCatalog);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   // Handle undefined during initial load
   if (!ingest) {
@@ -20,9 +20,6 @@ export function CatalogUpload() {
       </Card>
     );
   }
-
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   const handleFile = async (file: File) => {
     setUploading(true);
