@@ -9,6 +9,7 @@
  */
 
 import type * as ingest from "../ingest.js";
+import type * as lib_normalization from "../lib/normalization.js";
 import type * as products from "../products.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
+  "lib/normalization": typeof lib_normalization;
   products: typeof products;
 }>;
 

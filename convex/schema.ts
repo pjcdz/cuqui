@@ -7,6 +7,11 @@ export default defineSchema({
     brand: v.string(),
     presentation: v.string(),
     price: v.number(),
+    // Normalización de precios (RF-016)
+    normalizedPrice: v.optional(v.number()), // Precio por unidad estándar (litro, kg, unidad)
+    unitOfMeasure: v.optional(v.string()), // "litro", "kg", "unidad", "ml", "g"
+    quantity: v.optional(v.number()), // Cantidad en el empaque original
+    multiplier: v.optional(v.number()), // Para multi-pack (ej: 12 X 1,5 LT → multiplier=12)
     category: v.string(),
     tags: v.array(v.string()),
     providerId: v.string(),
@@ -15,5 +20,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_provider", ["providerId"])
-    .index("by_tags", ["tags"]),
+    .index("by_tags", ["tags"])
+    .index("by_category", ["category"]),
 });
