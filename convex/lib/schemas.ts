@@ -20,7 +20,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
  * Describes layout, content type, and AI interpretation hints
  */
 export const PageMetadataSchema = z.object({
-  pageNumber: z.number().int().positive().describe("Page number in the document (1-indexed)"),
+  pageNumber: z.number().int().min(1).describe("Page number in the document (1-indexed)"),
   layoutType: z
     .enum([
       "table",
@@ -68,8 +68,8 @@ export type PageMetadata = z.infer<typeof PageMetadataSchema>;
  */
 export const SectionMetadataSchema = z.object({
   title: z.string().describe("Section title (e.g., 'BEBIDAS', 'LACTEOS')"),
-  startPage: z.number().int().positive().describe("First page number of this section"),
-  endPage: z.number().int().positive().describe("Last page number of this section"),
+  startPage: z.number().int().min(1).describe("First page number of this section"),
+  endPage: z.number().int().min(1).describe("Last page number of this section"),
   category: z.string().optional().describe("Product category for this section"),
   notes: z.string().optional().describe("Additional notes about this section"),
 });
@@ -130,8 +130,8 @@ export const PackagingInfoSchema = z.object({
   saleFormat: z
     .enum(["single", "multi-pack", "bulk", "variable"])
     .describe("How the product is sold"),
-  unitsPerPack: z.number().int().positive().optional().describe("Number of units in a multi-pack"),
-  netQuantity: z.number().positive().describe("Net quantity of product"),
+  unitsPerPack: z.number().int().min(1).optional().describe("Number of units in a multi-pack"),
+  netQuantity: z.number().min(0.000001).describe("Net quantity of product"),
   netUnit: z
     .enum(["litro", "ml", "kg", "g", "unidad"])
     .describe("Unit of measure for net quantity"),
@@ -144,7 +144,7 @@ export type PackagingInfo = z.infer<typeof PackagingInfoSchema>;
  * The AI model determines what the price represents
  */
 export const PriceInterpretationSchema = z.object({
-  amount: z.number().positive().describe("Price amount in document currency"),
+  amount: z.number().min(0.000001).describe("Price amount in document currency"),
   type: z
     .enum(["per-pack", "per-unit", "per-kg", "per-liter", "wholesale", "retail", "unknown"])
     .describe("What this price represents"),
@@ -206,9 +206,9 @@ export const ProductChunkResponseSchema = z.object({
   chunkContext: z
     .object({
       chunkIndex: z.number().int().nonnegative().describe("Chunk number in sequence"),
-      totalChunks: z.number().int().positive().describe("Total number of chunks"),
+      totalChunks: z.number().int().min(1).describe("Total number of chunks"),
       pageRange: z
-        .tuple([z.number().int().positive(), z.number().int().positive()])
+        .tuple([z.number().int().min(1), z.number().int().min(1)])
         .describe("Page range for this chunk [start, end]"),
     })
     .describe("Context about this chunk's position in the document"),
