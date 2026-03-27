@@ -9,6 +9,8 @@
  */
 
 import type * as ingest from "../ingest.js";
+import type * as lib_chunking from "../lib/chunking.js";
+import type * as lib_normalization from "../lib/normalization.js";
 import type * as lib_schemas from "../lib/schemas.js";
 import type * as products from "../products.js";
 
@@ -20,6 +22,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
+  "lib/chunking": typeof lib_chunking;
+  "lib/normalization": typeof lib_normalization;
   "lib/schemas": typeof lib_schemas;
   products: typeof products;
 }>;
