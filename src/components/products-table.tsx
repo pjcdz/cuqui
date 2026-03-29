@@ -57,6 +57,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { formatPrice, getHighlightSegments } from "@/lib/format";
 
 // ============================================================================
 // Types
@@ -108,17 +109,37 @@ export type ProductEdit = z.infer<typeof ProductEditSchema>;
 // Editable field keys
 type EditableField = "name" | "brand" | "presentation" | "price" | "category";
 
+// formatPrice imported from @/lib/format
+
 // ============================================================================
-// Price formatter (es-AR locale)
+// Search result highlighting component (VAL-POLISH-010)
 // ============================================================================
 
-function formatPrice(price: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(price);
+function HighlightedText({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}) {
+  if (!query.trim()) {
+    return <>{text}</>;
+  }
+
+  const segments = getHighlightSegments(text, query);
+  return (
+    <>
+      {segments.map((segment, idx) =>
+        segment.highlighted ? (
+          <mark key={idx} className="bg-yellow-200 dark:bg-yellow-800 font-bold rounded-sm px-0.5">
+            {segment.text}
+          </mark>
+        ) : (
+          <span key={idx}>{segment.text}</span>
+        )
+      )}
+    </>
+  );
 }
 
 // ============================================================================
@@ -282,10 +303,12 @@ function ProductDetailModal({
   product,
   open,
   onOpenChange,
+  searchQuery = "",
 }: {
   product: Product | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  searchQuery?: string;
 }) {
   if (!product) return null;
 
@@ -293,7 +316,7 @@ function ProductDetailModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">{product.name}</DialogTitle>
+          <DialogTitle className="text-xl"><HighlightedText text={product.name} query={searchQuery} /></DialogTitle>
           <DialogDescription className="sr-only">
             Detalle del producto {product.name}
           </DialogDescription>
@@ -449,9 +472,11 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function ProductCard({
   product,
   onClick,
+  searchQuery = "",
 }: {
   product: Product;
   onClick: () => void;
+  searchQuery?: string;
 }) {
   return (
     <Card
@@ -475,8 +500,8 @@ function ProductCard({
 
       {/* Content */}
       <div className="p-3 space-y-1.5">
-        <h3 className="font-medium text-sm line-clamp-2">{product.name}</h3>
-        <p className="text-xs text-muted-foreground">{product.brand}</p>
+        <h3 className="font-medium text-sm line-clamp-2"><HighlightedText text={product.name} query={searchQuery} /></h3>
+        <p className="text-xs text-muted-foreground"><HighlightedText text={product.brand} query={searchQuery} /></p>
         <p className="text-sm font-bold text-primary">
           {formatPrice(product.price)}
         </p>
@@ -543,6 +568,7 @@ function createColumns(
   onSave: (productId: string, field: EditableField, value: string | number) => string | true,
   onDelete: (product: Product) => void,
   onToggleActive?: (product: Product) => void,
+  searchQuery: string = "",
 ): ColumnDef<Product>[] {
   const columns: ColumnDef<Product>[] = [];
 
@@ -741,7 +767,9 @@ function createColumns(
           <SortHeader column={column}>Producto</SortHeader>
         ),
         cell: ({ row }) => (
-          <span className="font-medium">{row.original.name}</span>
+          <span className="font-medium">
+            <HighlightedText text={row.original.name} query={searchQuery} />
+          </span>
         ),
       },
       {
@@ -751,7 +779,7 @@ function createColumns(
         ),
         cell: ({ row }) => (
           <Badge variant="secondary" className="capitalize">
-            {row.original.category}
+            <HighlightedText text={row.original.category} query={searchQuery} />
           </Badge>
         ),
       },
@@ -759,6 +787,9 @@ function createColumns(
         accessorKey: "brand",
         header: ({ column }) => (
           <SortHeader column={column}>Marca</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <HighlightedText text={row.original.brand} query={searchQuery} />
         ),
       },
       {
@@ -801,6 +832,7 @@ export function ProductsTable({
   providerMode = false,
   onToggleActive,
   onBatchPriceUpdate,
+  searchQuery = "",
 }: {
   products: Product[];
   viewMode?: ViewMode;
@@ -808,6 +840,7 @@ export function ProductsTable({
   providerMode?: boolean;
   onToggleActive?: (product: Product) => void;
   onBatchPriceUpdate?: (productIds: string[]) => void;
+  searchQuery?: string;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
@@ -875,7 +908,7 @@ export function ProductsTable({
   }, [deleteTarget, removeProduct]);
 
   const columns = useMemo(
-    () => createColumns(providerMode, handleInlineSave, handleDeleteClick, onToggleActive),
+    () => createColumns(providerMode, handleInlineSave, handleDeleteClick, onToggleActive, searchQuery),
     [providerMode, handleInlineSave, handleDeleteClick, onToggleActive],
   );
 
@@ -986,7 +1019,7 @@ export function ProductsTable({
 
       {/* Table view */}
       {viewMode === "table" && (
-        <Card className="p-0 overflow-hidden">
+        <Card className="p-0 overflow-hidden overflow-x-auto">
           <Table>
             <TableHeader>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -1028,12 +1061,13 @@ export function ProductsTable({
 
       {/* Grid/card view */}
       {viewMode === "grid" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {table.getRowModel().rows.map((row) => (
             <ProductCard
               key={row.id}
               product={row.original}
               onClick={() => handleProductClick(row.original)}
+              searchQuery={searchQuery}
             />
           ))}
         </div>
@@ -1105,6 +1139,7 @@ export function ProductsTable({
             setModalOpen(open);
             if (!open) setSelectedProduct(null);
           }}
+          searchQuery={searchQuery}
         />
       )}
 

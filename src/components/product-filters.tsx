@@ -106,7 +106,7 @@ export function ProductFilters({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
+            <SlidersHorizontal className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
             <h3 className="text-lg font-semibold">Filtros</h3>
           </div>
           {hasActiveFilters && (
@@ -115,8 +115,9 @@ export function ProductFilters({
               size="sm"
               onClick={onClearAll}
               className="text-muted-foreground"
+              aria-label="Limpiar todos los filtros"
             >
-              <X className="h-4 w-4 mr-1" />
+              <X className="h-4 w-4 mr-1" aria-hidden="true" />
               Limpiar filtros
             </Button>
           )}
@@ -167,12 +168,14 @@ export function ProductFilters({
                 size="sm"
                 onClick={() => setSort(opt.value)}
                 className="text-xs"
+                aria-label={`Ordenar: ${opt.label}`}
+                aria-pressed={filters.sort === opt.value}
               >
                 {opt.value === "price_asc" && (
-                  <ArrowUp className="h-3 w-3 mr-1" />
+                  <ArrowUp className="h-3 w-3 mr-1" aria-hidden="true" />
                 )}
                 {opt.value === "price_desc" && (
-                  <ArrowDown className="h-3 w-3 mr-1" />
+                  <ArrowDown className="h-3 w-3 mr-1" aria-hidden="true" />
                 )}
                 {opt.label}
               </Button>
@@ -201,6 +204,7 @@ export function ProductFilters({
                       checked={isChecked}
                       onChange={() => toggleProvider(item.id)}
                       className="rounded border-muted-foreground"
+                      aria-label={`Filtrar por proveedor: ${displayName}`}
                     />
                     <span className="truncate flex-1">{displayName}</span>
                     <Badge variant="secondary" className="text-xs">
@@ -221,8 +225,9 @@ export function ProductFilters({
               checked={filters.onlyWithImage}
               onChange={toggleOnlyWithImage}
               className="rounded border-muted-foreground"
+              aria-label="Filtrar solo productos con imagen"
             />
-            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+            <ImageIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <span className="text-sm font-medium">Solo con imagen</span>
           </label>
         </div>

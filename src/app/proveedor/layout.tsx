@@ -11,6 +11,7 @@ import {
   Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   {
@@ -49,7 +50,7 @@ export default function ProveedorLayout({
       <aside className="w-64 border-r bg-card flex flex-col shrink-0">
         {/* Brand */}
         <div className="p-6 border-b">
-          <Link href="/proveedor/dashboard" className="flex items-center gap-2">
+          <Link href="/proveedor/dashboard" className="flex items-center gap-2" aria-label="Ir al dashboard">
             <Store className="h-6 w-6 text-primary" />
             <span className="text-xl font-bold">Cuqui</span>
           </Link>
@@ -57,17 +58,17 @@ export default function ProveedorLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav aria-label="Navegación de proveedor" className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.href} href={item.href} aria-label={item.label} aria-current={isActive ? "page" : undefined}>
                 <Button
                   variant={isActive ? "secondary" : "ghost"}
                   className="w-full justify-start gap-3"
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4" aria-hidden="true" />
                   {item.label}
                 </Button>
               </Link>
@@ -76,8 +77,9 @@ export default function ProveedorLayout({
         </nav>
 
         {/* User section */}
-        <div className="p-4 border-t">
-          {isSignedIn && <UserButton />}
+        <div className="p-4 border-t flex items-center gap-2">
+          {isSignedIn && <UserButton aria-label="Menú de usuario" />}
+          <ThemeToggle />
         </div>
       </aside>
 

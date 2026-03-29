@@ -188,6 +188,7 @@ export function CatalogUpload() {
             accept=".pdf,.xlsx,.xls"
             onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
             disabled={uploading}
+            aria-label="Seleccionar archivo de catálogo (PDF, Excel, máximo 50MB)"
             className="mb-4 block w-full text-sm text-gray-500
               file:mr-4 file:py-2 file:px-4
               file:rounded-md file:border-0

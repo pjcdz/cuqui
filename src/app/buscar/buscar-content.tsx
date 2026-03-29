@@ -26,6 +26,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { Store } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type Product = Doc<"products">;
 
@@ -96,8 +97,8 @@ export function BuscarContent() {
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Store className="h-6 w-6 text-primary" />
-            <Link href="/buscar" className="text-xl font-bold">
+            <Store className="h-6 w-6 text-primary" aria-hidden="true" />
+            <Link href="/buscar" className="text-xl font-bold" aria-label="Inicio - Buscar productos">
               Cuqui
             </Link>
             <span className="text-sm text-muted-foreground ml-2">
@@ -105,6 +106,7 @@ export function BuscarContent() {
             </span>
           </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             {isLoaded && !isSignedIn && (
               <SignInButton mode="modal">
                 <button className="text-sm font-medium hover:underline">
@@ -112,7 +114,7 @@ export function BuscarContent() {
                 </button>
               </SignInButton>
             )}
-            {isSignedIn && <UserButton />}
+            {isSignedIn && <UserButton aria-label="Menú de usuario" />}
           </div>
         </div>
       </header>
@@ -130,6 +132,7 @@ export function BuscarContent() {
             <button
               onClick={clearAllFilters}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+              aria-label="Limpiar todos los filtros"
             >
               Limpiar todos los filtros
             </button>
@@ -142,6 +145,7 @@ export function BuscarContent() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             filteredCount={sortedProducts.length}
+            allProducts={(allProducts || []).map((p) => ({ name: p.name, brand: p.brand }))}
           />
         </div>
 
@@ -330,6 +334,7 @@ export function BuscarContent() {
               <button
                 onClick={clearAllFilters}
                 className="text-sm text-primary hover:underline"
+                aria-label="Limpiar todos los filtros"
               >
                 Limpiar todos los filtros
               </button>

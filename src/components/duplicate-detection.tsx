@@ -228,11 +228,11 @@ function MergeDialog({
           <DialogClose render={<Button variant="outline" />}>
             Cancelar
           </DialogClose>
-          <Button onClick={handleMerge} disabled={loading} className="gap-2">
+          <Button onClick={handleMerge} disabled={loading} className="gap-2" aria-label="Confirmar fusión de productos">
             {loading ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
+              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
             ) : (
-              <GitMerge className="h-4 w-4" />
+              <GitMerge className="h-4 w-4" aria-hidden="true" />
             )}
             {loading ? "Fusionando..." : "Fusionar productos"}
           </Button>
@@ -329,8 +329,9 @@ function DuplicatePairCard({
           onClick={() => onMerge(pair)}
           disabled={loading}
           className="flex-1 gap-2"
+          aria-label={`Fusionar duplicados: ${pair.productAData.name} y ${pair.productBData.name}`}
         >
-          <GitMerge className="h-4 w-4" />
+          <GitMerge className="h-4 w-4" aria-hidden="true" />
           Fusionar
         </Button>
         <Button
@@ -339,8 +340,9 @@ function DuplicatePairCard({
           onClick={() => onIgnore(pair._id)}
           disabled={loading}
           className="flex-1 gap-2"
+          aria-label={`Ignorar duplicado: ${pair.productAData.name} y ${pair.productBData.name}`}
         >
-          <EyeOff className="h-4 w-4" />
+          <EyeOff className="h-4 w-4" aria-hidden="true" />
           Son diferentes, ignorar
         </Button>
       </div>
@@ -440,11 +442,12 @@ export function DuplicateDetection() {
           onClick={handleDetect}
           disabled={detecting}
           className="gap-2"
+          aria-label="Detectar productos duplicados"
         >
           {detecting ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
+            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
           ) : (
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
           )}
           {detecting ? "Detectando..." : "Detectar duplicados"}
         </Button>
