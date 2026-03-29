@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { ProductsTable } from "@/components/products-table";
+import { DuplicateDetection } from "@/components/duplicate-detection";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -363,6 +364,9 @@ export default function ProveedorProductosPage() {
           </div>
         </div>
       </div>
+
+      {/* Duplicate detection section (VAL-CATALOG-012, VAL-CATALOG-013, VAL-CATALOG-014) */}
+      <DuplicateDetection />
 
       {displayProducts.length === 0 ? (
         <Card className="p-8 text-center">

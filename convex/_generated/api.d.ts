@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as duplicates from "../duplicates.js";
 import type * as ingest from "../ingest.js";
 import type * as ingestionProgress from "../ingestionProgress.js";
+import type * as lib_levenshtein from "../lib/levenshtein.js";
 import type * as lib_schemas from "../lib/schemas.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as products from "../products.js";
@@ -22,8 +24,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  duplicates: typeof duplicates;
   ingest: typeof ingest;
   ingestionProgress: typeof ingestionProgress;
+  "lib/levenshtein": typeof lib_levenshtein;
   "lib/schemas": typeof lib_schemas;
   "lib/validation": typeof lib_validation;
   products: typeof products;

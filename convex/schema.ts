@@ -51,6 +51,21 @@ export default defineSchema({
       filterFields: ["category", "brand", "providerId"],
     }),
 
+  // Duplicate detection tracking (RF-018, VAL-CATALOG-012/013/014)
+  duplicatePairs: defineTable({
+    providerId: v.string(),
+    productA: v.id("products"),
+    productB: v.id("products"),
+    nameDistance: v.number(),
+    similarity: v.number(),
+    status: v.string(), // "pending" | "ignored"
+    detectedAt: v.number(),
+    ignoredAt: v.optional(v.number()),
+  })
+    .index("by_provider", ["providerId"])
+    .index("by_provider_status", ["providerId", "status"])
+    .index("by_products", ["productA", "productB"]),
+
   ingestionRuns: defineTable({
     providerId: v.string(),
     status: v.string(),
