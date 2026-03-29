@@ -40,6 +40,9 @@ export default defineSchema({
     // Idempotency + source rowId
     ingestionRunId: v.optional(v.id("ingestionRuns")),
     sourceRowId: v.optional(v.string()),
+    // Statistics tracking (VAL-POLISH-001/002/003)
+    viewCount: v.optional(v.number()),
+    searchAppearances: v.optional(v.number()),
   })
     .index("by_provider", ["providerId"])
     .index("by_tags", ["tags"])

@@ -643,3 +643,33 @@ export const getExportData = query({
       }));
   },
 });
+
+// ============================================================================
+// Statistics tracking — view count and search appearance increments
+// ============================================================================
+
+export const incrementViewCount = mutation({
+  args: { id: v.id("products") },
+  handler: async (ctx, args) => {
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      throw new Error("Product not found");
+    }
+    const currentCount = product.viewCount ?? 0;
+    await ctx.db.patch(args.id, { viewCount: currentCount + 1 });
+    return { success: true, viewCount: currentCount + 1 };
+  },
+});
+
+export const incrementSearchAppearances = mutation({
+  args: { ids: v.array(v.id("products")) },
+  handler: async (ctx, args) => {
+    for (const id of args.ids) {
+      const product = await ctx.db.get(id);
+      if (!product) continue;
+      const currentCount = product.searchAppearances ?? 0;
+      await ctx.db.patch(id, { searchAppearances: currentCount + 1 });
+    }
+    return { success: true, updated: args.ids.length };
+  },
+});

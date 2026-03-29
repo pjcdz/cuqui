@@ -16,6 +16,7 @@ import type * as lib_schemas from "../lib/schemas.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as products from "../products.js";
 import type * as providers from "../providers.js";
+import type * as stats from "../stats.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validation": typeof lib_validation;
   products: typeof products;
   providers: typeof providers;
+  stats: typeof stats;
 }>;
 
 /**

@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Upload,
   Package,
+  BarChart3,
   Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,11 @@ const navItems = [
     label: "Productos",
     href: "/proveedor/productos",
     icon: Package,
+  },
+  {
+    label: "Estadísticas",
+    href: "/proveedor/estadisticas",
+    icon: BarChart3,
   },
 ];
 
