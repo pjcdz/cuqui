@@ -20,7 +20,9 @@ export const list = query({
         throw new Error(`Invalid limit: ${args.limit}. Must be <= 1000 to prevent abuse`);
       }
     }
-    return await ctx.db.query("products").take(limit);
+    // Public catalog — only show active products (VAL-CROSS-003)
+    const all = await ctx.db.query("products").take(limit);
+    return all.filter((p) => p.active !== false);
   }
 });
 
@@ -41,7 +43,8 @@ export const getByTags = query({
     }
 
     if (args.tags.length === 0) {
-      return await ctx.db.query("products").take(limit);
+      const all = await ctx.db.query("products").take(limit);
+      return all.filter((p) => p.active !== false);
     }
 
     // Use array index for the first tag (element-wise match), filter remaining in memory
@@ -51,8 +54,9 @@ export const getByTags = query({
       .withIndex("by_tags", (q) => q.eq("tags", firstTag as unknown as string[]))
       .collect();
 
-    // AND logic for remaining tags
+    // AND logic for remaining tags + active filter (VAL-CROSS-003)
     return products
+      .filter((product) => product.active !== false)
       .filter((product) => args.tags.every((tag) => product.tags.includes(tag)))
       .slice(0, limit);
   }
@@ -80,7 +84,8 @@ export const search = query({
     const searchQuery = args.query.trim();
 
     if (!searchQuery) {
-      return await ctx.db.query("products").take(limit);
+      const all = await ctx.db.query("products").take(limit);
+      return all.filter((p) => p.active !== false);
     }
 
     // Use Convex searchIndex for full-text search on product name
@@ -98,7 +103,8 @@ export const search = query({
       })
       .take(limit);
 
-    return results;
+    // Filter out deactivated products from search results (VAL-CROSS-003)
+    return results.filter((p) => p.active !== false);
   }
 });
 
@@ -325,7 +331,12 @@ export const listByIngestionRun = internalQuery({
 export const getProduct = query({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const product = await ctx.db.get(args.id);
+    // Public detail — only return active products (VAL-CROSS-003)
+    if (!product || product.active === false) {
+      return null;
+    }
+    return product;
   },
 });
 
