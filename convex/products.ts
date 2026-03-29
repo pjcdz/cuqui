@@ -109,6 +109,7 @@ export const search = query({
 export const listOwn = query({
   args: {
     limit: v.optional(v.number()),
+    includeInactive: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -126,11 +127,56 @@ export const listOwn = query({
       }
     }
 
-    return await ctx.db
+    const products = await ctx.db
       .query("products")
       .withIndex("by_provider", (q) => q.eq("providerId", identity.tokenIdentifier))
       .take(limit);
+
+    // By default only return active products; includeInactive returns all
+    if (!args.includeInactive) {
+      return products.filter((p) => p.active !== false);
+    }
+    return products;
   }
+});
+
+// Search within provider catalog (VAL-CATALOG-010)
+export const searchOwn = query({
+  args: {
+    query: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const searchQuery = args.query.trim().toLowerCase();
+    if (!searchQuery) {
+      return await ctx.db
+        .query("products")
+        .withIndex("by_provider", (q) => q.eq("providerId", identity.tokenIdentifier))
+        .take(500);
+    }
+
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_provider", (q) => q.eq("providerId", identity.tokenIdentifier))
+      .collect();
+
+    return products.filter((p) => {
+      // Only show active products in search
+      if (p.active === false) return false;
+      const name = (p.name ?? "").toLowerCase();
+      const brand = (p.brand ?? "").toLowerCase();
+      const sourceRowId = (p.sourceRowId ?? "").toLowerCase();
+      return (
+        name.includes(searchQuery) ||
+        brand.includes(searchQuery) ||
+        sourceRowId.includes(searchQuery)
+      );
+    });
+  },
 });
 
 // ============================================================================
@@ -466,5 +512,134 @@ export const deleteByIngestionRun = internalMutation({
       deleted++;
     }
     return deleted;
+  },
+});
+
+// ============================================================================
+// Batch price update — update prices for multiple products at once (VAL-CATALOG-006)
+// ============================================================================
+
+export const batchPriceUpdate = mutation({
+  args: {
+    productIds: v.array(v.id("products")),
+    mode: v.union(v.literal("percentage"), v.literal("fixed")),
+    value: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    if (args.productIds.length === 0) {
+      throw new Error("No products selected");
+    }
+    if (args.productIds.length > 500) {
+      throw new Error("Too many products selected (max 500)");
+    }
+    if (!isFinite(args.value)) {
+      throw new Error("Invalid value");
+    }
+    if (args.mode === "percentage" && args.value <= -100) {
+      throw new Error("Percentage decrease cannot exceed -100%");
+    }
+    if (args.mode === "fixed" && args.value <= 0) {
+      throw new Error("Fixed price must be greater than 0");
+    }
+
+    const now = Date.now();
+    let updated = 0;
+
+    for (const productId of args.productIds) {
+      const product = await ctx.db.get(productId);
+      if (!product) continue;
+      if (product.providerId !== identity.tokenIdentifier) continue;
+
+      let newPrice: number;
+      if (args.mode === "percentage") {
+        newPrice = product.price * (1 + args.value / 100);
+      } else {
+        newPrice = args.value;
+      }
+
+      // Round to 2 decimal places
+      newPrice = Math.round(newPrice * 100) / 100;
+      if (newPrice <= 0) continue;
+
+      await ctx.db.patch(productId, {
+        price: newPrice,
+        updatedAt: now,
+      });
+      updated++;
+    }
+
+    return { updated };
+  },
+});
+
+// ============================================================================
+// Toggle active — soft delete / reactivate (VAL-CATALOG-007, VAL-CATALOG-008)
+// ============================================================================
+
+export const toggleActive = mutation({
+  args: {
+    id: v.id("products"),
+    active: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      throw new Error("Product not found");
+    }
+    if (product.providerId !== identity.tokenIdentifier) {
+      throw new Error("Not authorized to update this product");
+    }
+
+    await ctx.db.patch(args.id, {
+      active: args.active,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true, active: args.active };
+  },
+});
+
+// ============================================================================
+// Export catalog — get all active products for export (VAL-CATALOG-011)
+// ============================================================================
+
+export const getExportData = query({
+  args: {},
+  handler: async (ctx, _args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_provider", (q) => q.eq("providerId", identity.tokenIdentifier))
+      .collect();
+
+    // Only export active products
+    return products
+      .filter((p) => p.active !== false)
+      .map((p) => ({
+        name: p.name,
+        category: p.category,
+        subcategory: p.subcategory ?? "",
+        brand: p.brand,
+        price: p.price,
+        unit: p.unitOfMeasure ?? "",
+        presentation: p.presentation,
+        provider: p.providerId,
+        tags: p.tags.join(", "),
+        reviewStatus: p.reviewStatus ?? "",
+      }));
   },
 });

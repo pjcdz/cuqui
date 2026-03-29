@@ -19,6 +19,7 @@ export default defineSchema({
     tags: v.array(v.string()),
     providerId: v.string(),
     imageUrl: v.optional(v.string()),
+    active: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
     // Normalized pricing (RF-016)

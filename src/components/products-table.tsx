@@ -9,6 +9,7 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
+  type RowSelectionState,
 } from "@tanstack/react-table";
 import {
   Table,
@@ -48,6 +49,8 @@ import {
   Check,
   X,
   Trash2,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { z } from "zod";
 import { useMutation } from "convex/react";
@@ -73,6 +76,7 @@ type Product = {
   subcategory?: string;
   tags: string[];
   imageUrl?: string;
+  active?: boolean;
   providerId: string;
   rawText?: string;
   packagingType?: string;
@@ -82,6 +86,7 @@ type Product = {
   reviewStatus?: string;
   quantity?: number;
   multiplier?: number;
+  sourceRowId?: string;
 };
 
 const PAGE_SIZE = 20;
@@ -537,32 +542,62 @@ function createColumns(
   providerMode: boolean,
   onSave: (productId: string, field: EditableField, value: string | number) => string | true,
   onDelete: (product: Product) => void,
+  onToggleActive?: (product: Product) => void,
 ): ColumnDef<Product>[] {
-  const columns: ColumnDef<Product>[] = [
-    {
-      accessorKey: "imageUrl",
-      header: () => <span className="sr-only">Imagen</span>,
-      size: 60,
-      cell: ({ row }) => {
-        const url = row.original.imageUrl;
-        if (url) {
-          return (
-            <img
-              src={url}
-              alt={row.original.name}
-              className="h-10 w-10 rounded object-cover"
-            />
-          );
-        }
-        return (
-          <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
-            <ImageIcon className="h-4 w-4 text-muted-foreground" />
-          </div>
-        );
-      },
+  const columns: ColumnDef<Product>[] = [];
+
+  if (providerMode) {
+    // Checkbox column for batch selection (VAL-CATALOG-006)
+    columns.push({
+      id: "select",
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          checked={table.getIsAllPageRowsSelected()}
+          onChange={table.getToggleAllPageRowsSelectedHandler()}
+          aria-label="Seleccionar todos"
+          className="h-4 w-4 rounded border-gray-300"
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Seleccionar ${row.original.name}`}
+          className="h-4 w-4 rounded border-gray-300"
+        />
+      ),
+      size: 40,
       enableSorting: false,
+    });
+  }
+
+  // Image column
+  columns.push({
+    accessorKey: "imageUrl",
+    header: () => <span className="sr-only">Imagen</span>,
+    size: 60,
+    cell: ({ row }) => {
+      const url = row.original.imageUrl;
+      if (url) {
+        return (
+          <img
+            src={url}
+            alt={row.original.name}
+            className="h-10 w-10 rounded object-cover"
+          />
+        );
+      }
+      return (
+        <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
+          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+        </div>
+      );
     },
-  ];
+    enableSorting: false,
+  });
 
   if (providerMode) {
     // Editable columns in provider mode (VAL-CATALOG-002)
@@ -643,6 +678,10 @@ function createColumns(
         header: "Estado",
         cell: ({ row }) => {
           const status = row.original.reviewStatus;
+          const isActive = row.original.active !== false;
+          if (!isActive) {
+            return <Badge variant="outline" className="text-gray-500 border-gray-300">Desactivado</Badge>;
+          }
           if (status === "needs_review") {
             return <Badge variant="outline" className="text-amber-600 border-amber-300">Requiere revisión</Badge>;
           }
@@ -653,21 +692,43 @@ function createColumns(
       {
         id: "actions",
         header: () => <span className="sr-only">Acciones</span>,
-        size: 60,
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(row.original);
-            }}
-            aria-label={`Eliminar ${row.original.name}`}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        ),
+        size: 120,
+        cell: ({ row }) => {
+          const isActive = row.original.active !== false;
+          return (
+            <div className="flex items-center gap-1">
+              {/* Toggle active/deactivate/reactivate (VAL-CATALOG-007, VAL-CATALOG-008) */}
+              {onToggleActive && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleActive(row.original);
+                  }}
+                  aria-label={isActive ? `Desactivar ${row.original.name}` : `Reactivar ${row.original.name}`}
+                  className={isActive ? "text-muted-foreground hover:text-amber-600" : "text-green-600 hover:text-green-700"}
+                  title={isActive ? "Desactivar" : "Reactivar"}
+                >
+                  {isActive ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                </Button>
+              )}
+              {/* Permanent delete (VAL-CATALOG-009) */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(row.original);
+                }}
+                aria-label={`Eliminar ${row.original.name}`}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          );
+        },
         enableSorting: false,
       },
     );
@@ -738,13 +799,18 @@ export function ProductsTable({
   viewMode = "table",
   onViewModeChange,
   providerMode = false,
+  onToggleActive,
+  onBatchPriceUpdate,
 }: {
   products: Product[];
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   providerMode?: boolean;
+  onToggleActive?: (product: Product) => void;
+  onBatchPriceUpdate?: (productIds: string[]) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
@@ -809,8 +875,8 @@ export function ProductsTable({
   }, [deleteTarget, removeProduct]);
 
   const columns = useMemo(
-    () => createColumns(providerMode, handleInlineSave, handleDeleteClick),
-    [providerMode, handleInlineSave, handleDeleteClick],
+    () => createColumns(providerMode, handleInlineSave, handleDeleteClick, onToggleActive),
+    [providerMode, handleInlineSave, handleDeleteClick, onToggleActive],
   );
 
   const table = useReactTable({
@@ -818,8 +884,11 @@ export function ProductsTable({
     columns,
     state: {
       sorting,
+      rowSelection,
     },
     onSortingChange: setSorting,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection: providerMode,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -829,6 +898,10 @@ export function ProductsTable({
       },
     },
   });
+
+  // Expose selected row data for batch operations
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+  const selectedProducts = selectedRows.map((r) => r.original);
 
   function handleProductClick(product: Product) {
     // In provider mode, don't open detail modal on click (to avoid conflict with inline editing)
@@ -878,6 +951,38 @@ export function ProductsTable({
           </div>
         )}
       </div>
+
+      {/* Batch selection info & actions (VAL-CATALOG-006) */}
+      {providerMode && selectedProducts.length > 0 && (
+        <Card className="p-3 flex items-center justify-between">
+          <p className="text-sm font-medium">
+            {selectedProducts.length} producto{selectedProducts.length !== 1 ? "s" : ""} seleccionado{selectedProducts.length !== 1 ? "s" : ""}
+          </p>
+          <div className="flex gap-2">
+            {onBatchPriceUpdate && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onBatchPriceUpdate(selectedProducts.map((p) => p._id as Id<"products">));
+                }}
+                className="gap-2"
+              >
+                <DollarSign className="h-4 w-4" />
+                Actualizar precios
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRowSelection({})}
+              className="gap-2"
+            >
+              Limpiar selección
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Table view */}
       {viewMode === "table" && (
