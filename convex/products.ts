@@ -1,6 +1,7 @@
 import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { checkRateLimit } from "./lib/rateLimiter";
 
 // ============================================================================
 // Public catalog queries (RF-006, RF-007, RF-008) — comercio sees ALL products
@@ -222,6 +223,8 @@ export const create = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const providerId = identity.tokenIdentifier;
 
     // Runtime validation: enforce unitOfMeasure union type
@@ -348,6 +351,8 @@ export const remove = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const product = await ctx.db.get(args.id);
     if (!product) {
       throw new Error("Product not found");
@@ -380,6 +385,8 @@ export const updateProduct = mutation({
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
 
     const product = await ctx.db.get(args.id);
     if (!product) {
@@ -434,6 +441,8 @@ export const batchPublishAll = mutation({
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
 
     const providerId = identity.tokenIdentifier;
 
@@ -542,6 +551,8 @@ export const batchPriceUpdate = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     if (args.productIds.length === 0) {
       throw new Error("No products selected");
     }
@@ -603,6 +614,8 @@ export const toggleActive = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const product = await ctx.db.get(args.id);
     if (!product) {
       throw new Error("Product not found");
@@ -662,6 +675,13 @@ export const getExportData = query({
 export const incrementViewCount = mutation({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const product = await ctx.db.get(args.id);
     if (!product) {
       throw new Error("Product not found");
@@ -675,6 +695,13 @@ export const incrementViewCount = mutation({
 export const incrementSearchAppearances = mutation({
   args: { ids: v.array(v.id("products")) },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     for (const id of args.ids) {
       const product = await ctx.db.get(id);
       if (!product) continue;

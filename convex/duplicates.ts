@@ -13,6 +13,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { levenshteinDistance, levenshteinSimilarity } from "./lib/levenshtein";
+import { checkRateLimit } from "./lib/rateLimiter";
 
 // ============================================================================
 // Queries
@@ -112,6 +113,8 @@ export const detectDuplicates = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const providerId = identity.tokenIdentifier;
     const nameThreshold = args.nameThreshold ?? 3;
 
@@ -207,6 +210,8 @@ export const mergeDuplicates = mutation({
       throw new Error("Authentication required");
     }
 
+    checkRateLimit(ctx, identity.tokenIdentifier);
+
     const pair = await ctx.db.get(args.pairId);
     if (!pair) {
       throw new Error("Duplicate pair not found");
@@ -291,6 +296,8 @@ export const ignoreDuplicatePair = mutation({
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
 
     const pair = await ctx.db.get(args.pairId);
     if (!pair) {

@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { checkRateLimit } from "./lib/rateLimiter";
 
 /**
  * List all registered providers (public, used for provider filter on /buscar).
@@ -46,6 +47,8 @@ export const createOrUpdateProvider = mutation({
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
 
     const clerkId = identity.tokenIdentifier;
     const name = identity.name ?? "Proveedor";

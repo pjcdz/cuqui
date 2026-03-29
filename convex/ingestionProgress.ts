@@ -1,5 +1,6 @@
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { checkRateLimit } from "./lib/rateLimiter";
 
 export const createRun = mutation({
   args: {},
@@ -8,6 +9,8 @@ export const createRun = mutation({
     if (!identity) {
       throw new Error("Authentication required");
     }
+
+    checkRateLimit(ctx, identity.tokenIdentifier);
 
     const now = Date.now();
     return await ctx.db.insert("ingestionRuns", {
