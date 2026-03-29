@@ -10,18 +10,21 @@ type TreeProduct = {
   category: string;
   subcategory?: string;
   brand: string;
+  presentation?: string;
 };
 
 export type TreeFilter = {
   category: string | null;
   subcategory: string | null;
   brand: string | null;
+  presentation: string | null;
 };
 
 export const EMPTY_TREE_FILTER: TreeFilter = {
   category: null,
   subcategory: null,
   brand: null,
+  presentation: null,
 };
 
 type LevelOption = {
@@ -52,6 +55,7 @@ function countBy(
  *   0 → Categoría     (product.category)
  *   1 → Subcategoría  (product.subcategory — skipped if none exist)
  *   2 → Marca         (product.brand)
+ *   3 → Presentación  (product.presentation)
  *
  * Each level shows ONLY options that have matching products (RF-014).
  * Selections accumulate with AND logic (RF-012).
@@ -109,6 +113,22 @@ export function TreeNavigation({
       };
     }
 
+    // Level 2 selected, show presentations
+    const byBrand = bySubcat.filter(
+      (p) => p.brand === filter.brand
+    );
+
+    if (!filter.presentation) {
+      const presOptions = countBy(byBrand, (p) => p.presentation).filter(
+        (o) => o.value
+      );
+      if (presOptions.length > 0) {
+        return { nextLevelName: "Presentación", nextOptions: presOptions };
+      }
+      // No presentations → all selected
+      return { nextLevelName: null, nextOptions: [] };
+    }
+
     // All levels selected
     return { nextLevelName: null, nextOptions: [] };
   }, [allProducts, filter]);
@@ -122,30 +142,37 @@ export function TreeNavigation({
       items.push({ label: filter.subcategory, clearFrom: "subcategory" });
     if (filter.brand)
       items.push({ label: filter.brand, clearFrom: "brand" });
+    if (filter.presentation)
+      items.push({ label: filter.presentation, clearFrom: "presentation" });
     return items;
   }, [filter]);
 
   const hasAnyFilter =
     filter.category !== null ||
     filter.subcategory !== null ||
-    filter.brand !== null;
+    filter.brand !== null ||
+    filter.presentation !== null;
   const allSelected = nextLevelName === null;
 
   function selectOption(value: string) {
     if (!filter.category) {
-      onFilterChange({ category: value, subcategory: null, brand: null });
+      onFilterChange({ category: value, subcategory: null, brand: null, presentation: null });
     } else if (
       !filter.subcategory &&
       nextLevelName === "Subcategoría"
     ) {
-      onFilterChange({ ...filter, subcategory: value });
+      onFilterChange({ ...filter, subcategory: value, brand: null, presentation: null });
     } else if (!filter.brand) {
-      onFilterChange({ ...filter, brand: value });
+      onFilterChange({ ...filter, brand: value, presentation: null });
+    } else if (!filter.presentation) {
+      onFilterChange({ ...filter, presentation: value });
     }
   }
 
   function goBack() {
-    if (filter.brand !== null) {
+    if (filter.presentation !== null) {
+      onFilterChange({ ...filter, presentation: null });
+    } else if (filter.brand !== null) {
       onFilterChange({ ...filter, brand: null });
     } else if (filter.subcategory !== null) {
       onFilterChange({ ...filter, subcategory: null });
@@ -164,11 +191,16 @@ export function TreeNavigation({
       newFilter.category = null;
       newFilter.subcategory = null;
       newFilter.brand = null;
+      newFilter.presentation = null;
     } else if (clearFrom === "subcategory") {
       newFilter.subcategory = null;
       newFilter.brand = null;
+      newFilter.presentation = null;
     } else if (clearFrom === "brand") {
       newFilter.brand = null;
+      newFilter.presentation = null;
+    } else if (clearFrom === "presentation") {
+      newFilter.presentation = null;
     }
     onFilterChange(newFilter);
   }
@@ -290,6 +322,11 @@ export function TreeNavigation({
               {filter.brand && (
                 <Badge variant="secondary" className="capitalize">
                   {filter.brand}
+                </Badge>
+              )}
+              {filter.presentation && (
+                <Badge variant="secondary" className="capitalize">
+                  {filter.presentation}
                 </Badge>
               )}
             </div>
