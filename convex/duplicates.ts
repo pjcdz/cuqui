@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { levenshteinDistance, levenshteinSimilarity } from "./lib/levenshtein";
 import { checkRateLimit } from "./lib/rateLimiter";
+import { createLogger } from "./lib/logger";
 
 // ============================================================================
 // Queries
@@ -273,6 +274,14 @@ export const mergeDuplicates = mutation({
         await ctx.db.delete(p._id);
       }
     }
+
+    const log = createLogger("duplicates", { userId: identity.tokenIdentifier });
+    log.info("Duplicates merged", {
+      operation: "mergeDuplicates",
+      duplicateIds: [pair.productA, pair.productB],
+      survivorId,
+      removedId,
+    });
 
     return {
       success: true,

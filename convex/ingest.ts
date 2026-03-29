@@ -30,6 +30,7 @@ import {
   PRODUCT_BATCH_PROMPT,
 } from "./lib/schemas";
 import { validateUploadedFile, validateGeminiApiKey, safeJsonParse } from "./lib/validation";
+import { createLogger } from "./lib/logger";
 
 // Model configuration
 const STAGE_1_MODEL = "gemini-3.1-pro";
@@ -602,6 +603,8 @@ export const ingestCatalog = action({
 
     let uploadedFileName: string | undefined;
 
+    const log = createLogger("pipeline", { runId: args.ingestionId, providerId });
+
     await fs.writeFile(tempPath, buffer);
 
     try {
@@ -617,7 +620,7 @@ export const ingestCatalog = action({
         throw new Error("File upload did not return required name or mimeType");
       }
 
-      console.log(`Pipeline: file uploaded to Gemini Files API, name=${uploadedFile.name}`);
+      log.info("File uploaded to Gemini Files API", { geminiFileName: uploadedFile.name });
 
       // Poll until the file is ACTIVE
       await updateIngestionProgress(ctx, args.ingestionId, providerId, {
@@ -629,7 +632,7 @@ export const ingestCatalog = action({
       });
 
       const activeFile = await pollUntilActive(ai, uploadedFile.name);
-      console.log(`Pipeline: file ACTIVE, uri=${activeFile.uri}`);
+      log.info("File ACTIVE on Gemini Files API", { uri: activeFile.uri });
 
       await updateIngestionProgress(ctx, args.ingestionId, providerId, {
         status: "stage_1",
@@ -639,9 +642,9 @@ export const ingestCatalog = action({
       });
 
       // Stage 1: Extract document metadata
-      console.log(`Pipeline: Stage 1 - extracting metadata`);
+      log.info("Stage 1 started — extracting metadata");
       const metadata = await extractDocumentMetadata(ai, activeFile.uri, activeFile.mimeType);
-      console.log(`Pipeline: Stage 1 complete - ${metadata.pages.length} pages`);
+      log.info("Stage 1 complete", { pages: metadata.pages.length });
 
       await updateIngestionProgress(ctx, args.ingestionId, providerId, {
         status: "stage_2",
@@ -650,15 +653,15 @@ export const ingestCatalog = action({
       });
 
       // Stage 2: Extract row-based representation
-      console.log(`Pipeline: Stage 2 - extracting row representation`);
+      log.info("Stage 2 started — extracting row representation");
       const documentRows = await extractDocumentRows(ai, activeFile.uri, activeFile.mimeType, metadata);
       const flattenedRows = flattenDocumentRows(documentRows);
-      console.log(`Pipeline: Stage 2 complete - ${flattenedRows.length} rows extracted`);
+      log.info("Stage 2 complete — rows extracted", { totalRows: flattenedRows.length });
 
       // Handle documents with no recognizable product rows
       if (flattenedRows.length === 0) {
         const duration = Date.now() - startTime;
-        console.log(`Pipeline: no product rows found in document`);
+        log.info("No product rows found in document");
 
         await updateIngestionProgress(ctx, args.ingestionId, providerId, {
           status: "completed",
@@ -688,7 +691,7 @@ export const ingestCatalog = action({
 
       // Store intermediate state in ingestionRuns so processBatches can pick it up
       const batches = createBatches(flattenedRows, BATCH_SIZE);
-      console.log(`Pipeline: Stage 2 complete — ${batches.length} batches ready for processing`);
+      log.info("Stage 2 complete — batches ready for processing", { totalBatches: batches.length, totalRows: documentRows.totalRowCount });
 
       await updateIngestionProgress(ctx, args.ingestionId, providerId, {
         status: "ready_for_batch",
@@ -729,7 +732,7 @@ export const ingestCatalog = action({
         try {
           await ai.files.delete({ name: uploadedFileName });
         } catch (error) {
-          console.error("Failed to delete remote file:", error);
+          log.error("Failed to delete remote file from Gemini", { geminiFileName: uploadedFileName, error: String(error) });
         }
       }
     }
@@ -795,7 +798,9 @@ export const processBatches = action({
       throw new Error(`startFromBatch ${startFrom} exceeds total batches ${batches.length}`);
     }
 
-    console.log(`processBatches: processing batches ${startFrom}-${batches.length - 1} of ${batches.length}`);
+    const log = createLogger("pipeline", { runId: args.ingestionId, providerId });
+
+    log.info("Processing batches", { startFromBatch: startFrom, totalBatches: batches.length });
 
     let processed = 0;
     let needsReview = 0;
@@ -827,7 +832,7 @@ export const processBatches = action({
           const result = normalizeProduct(item, args.ingestionId, providerId);
           if ("error" in result) {
             failedProducts += 1;
-            console.error(`Skipping product in batch ${batchIndex} (row ${item.sourceRowId}): ${result.error}`);
+            log.error("Skipping product — normalization failed", { batchIndex, sourceRowId: item.sourceRowId, reason: result.error });
             continue;
           }
           productsToInsert.push(result.product);
@@ -845,7 +850,7 @@ export const processBatches = action({
         }
       } catch (error) {
         failedBatches.push(batchIndex + 1);
-        console.error(`Failed batch ${batchIndex + 1}:`, error);
+        log.error("Batch processing failed", { batchIndex: batchIndex + 1, error: String(error) });
       }
 
       processedRows += batch.length;
@@ -967,7 +972,8 @@ export const resumeIngestion = action({
       }
     }
 
-    console.log(`resumeIngestion: resuming from batch ${startFromBatch} of ${batches.length}`);
+    const log = createLogger("pipeline", { runId: args.ingestionId, providerId });
+    log.info("Resuming ingestion", { startFromBatch, totalBatches: batches.length });
 
     // Delegate to processBatches
     const result: {

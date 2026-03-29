@@ -2,6 +2,7 @@ import { query, mutation, internalMutation, internalQuery } from "./_generated/s
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { checkRateLimit } from "./lib/rateLimiter";
+import { createLogger } from "./lib/logger";
 
 // ============================================================================
 // Public catalog queries (RF-006, RF-007, RF-008) — comercio sees ALL products
@@ -361,6 +362,9 @@ export const remove = mutation({
       throw new Error("Not authorized to delete this product");
     }
 
+    const log = createLogger("products", { userId: identity.tokenIdentifier, productId: args.id });
+    log.info("Product deleted", { operation: "remove", productId: args.id, productName: product.name });
+
     return await ctx.db.delete(args.id);
   },
 });
@@ -426,6 +430,8 @@ export const updateProduct = mutation({
     if (args.tags !== undefined) patch.tags = args.tags;
 
     await ctx.db.patch(args.id, patch);
+    const log = createLogger("products", { userId: identity.tokenIdentifier, productId: args.id });
+    log.info("Product updated", { operation: "updateProduct", productId: args.id, fields: Object.keys(patch) });
     return { success: true };
   },
 });
