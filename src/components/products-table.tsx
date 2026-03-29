@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -24,10 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   ArrowUpDown,
   ArrowUp,
@@ -41,7 +44,16 @@ import {
   DollarSign,
   Tag,
   Image as ImageIcon,
+  Pencil,
+  Check,
+  X,
+  Trash2,
 } from "lucide-react";
+import { z } from "zod";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { toast } from "sonner";
 
 // ============================================================================
 // Types
@@ -75,6 +87,23 @@ type Product = {
 const PAGE_SIZE = 20;
 
 // ============================================================================
+// Zod validation schema for inline product editing (VAL-CATALOG-003)
+// ============================================================================
+
+export const ProductEditSchema = z.object({
+  name: z.string().min(1, "El nombre es obligatorio"),
+  brand: z.string().min(1, "La marca es obligatoria"),
+  presentation: z.string().min(1, "La presentación es obligatoria"),
+  price: z.number({ error: "El precio debe ser un número" }).positive("El precio debe ser mayor a 0"),
+  category: z.string().min(1, "La categoría es obligatoria"),
+});
+
+export type ProductEdit = z.infer<typeof ProductEditSchema>;
+
+// Editable field keys
+type EditableField = "name" | "brand" | "presentation" | "price" | "category";
+
+// ============================================================================
 // Price formatter (es-AR locale)
 // ============================================================================
 
@@ -88,85 +117,126 @@ function formatPrice(price: number): string {
 }
 
 // ============================================================================
-// Column definitions
+// Inline editable cell component (VAL-CATALOG-002, VAL-CATALOG-003)
 // ============================================================================
 
-function createColumns(): ColumnDef<Product>[] {
-  return [
-    {
-      accessorKey: "imageUrl",
-      header: () => <span className="sr-only">Imagen</span>,
-      size: 60,
-      cell: ({ row }) => {
-        const url = row.original.imageUrl;
-        if (url) {
-          return (
-            <img
-              src={url}
-              alt={row.original.name}
-              className="h-10 w-10 rounded object-cover"
-            />
-          );
-        }
-        return (
-          <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
-            <ImageIcon className="h-4 w-4 text-muted-foreground" />
-          </div>
-        );
-      },
-      enableSorting: false,
-    },
-    {
-      accessorKey: "name",
-      header: ({ column }) => (
-        <SortHeader column={column}>Producto</SortHeader>
-      ),
-      cell: ({ row }) => (
-        <span className="font-medium">{row.original.name}</span>
-      ),
-    },
-    {
-      accessorKey: "category",
-      header: ({ column }) => (
-        <SortHeader column={column}>Categoría</SortHeader>
-      ),
-      cell: ({ row }) => (
-        <Badge variant="secondary" className="capitalize">
-          {row.original.category}
-        </Badge>
-      ),
-    },
-    {
-      accessorKey: "brand",
-      header: ({ column }) => (
-        <SortHeader column={column}>Marca</SortHeader>
-      ),
-    },
-    {
-      accessorKey: "price",
-      header: ({ column }) => (
-        <SortHeader column={column}>Precio</SortHeader>
-      ),
-      cell: ({ row }) => (
-        <span className="font-semibold">{formatPrice(row.original.price)}</span>
-      ),
-    },
-    {
-      accessorKey: "providerId",
-      header: "Proveedor",
-      cell: ({ row }) => {
-        // Extract a readable name from providerId (it's a Clerk token identifier)
-        const id = row.original.providerId;
-        const shortId = id.split("|").pop() || id;
-        return (
-          <span className="text-sm text-muted-foreground truncate max-w-[120px] block">
-            {shortId}
-          </span>
-        );
-      },
-      enableSorting: false,
-    },
-  ];
+function InlineEditableCell({
+  value,
+  field,
+  productId,
+  onSave,
+  valueType = "text",
+}: {
+  value: string | number;
+  field: EditableField;
+  productId: string;
+  onSave: (productId: string, field: EditableField, value: string | number) => string | true;
+  valueType?: "text" | "number";
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(String(value));
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(String(value));
+    setValidationError(null);
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    const parsedValue = valueType === "number" ? parseFloat(editValue) : editValue;
+
+    // Validate using Zod schema
+    const fieldSchema = ProductEditSchema.shape[field as keyof typeof ProductEditSchema.shape];
+    const result = fieldSchema.safeParse(parsedValue);
+
+    if (!result.success) {
+      setValidationError(result.error.issues[0]?.message ?? "Valor inválido");
+      return;
+    }
+
+    const saveResult = onSave(productId, field, parsedValue);
+    if (saveResult !== true) {
+      setValidationError(saveResult);
+      return;
+    }
+
+    setValidationError(null);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setValidationError(null);
+    setEditValue(String(value));
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancel();
+    }
+    e.stopPropagation();
+  };
+
+  if (isEditing) {
+    return (
+      <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1">
+          <Input
+            type={valueType}
+            value={editValue}
+            onChange={(e) => {
+              setEditValue(e.target.value);
+              setValidationError(null);
+            }}
+            onKeyDown={handleKeyDown}
+            className="h-7 text-sm min-w-[80px]"
+            autoFocus
+            step={valueType === "number" ? "0.01" : undefined}
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleSave}
+            className="h-6 w-6 shrink-0"
+            aria-label="Guardar"
+          >
+            <Check className="h-3.5 w-3.5 text-green-600" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleCancel}
+            className="h-6 w-6 shrink-0"
+            aria-label="Cancelar"
+          >
+            <X className="h-3.5 w-3.5 text-red-500" />
+          </Button>
+        </div>
+        {validationError && (
+          <p className="text-xs text-red-500 font-medium">{validationError}</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 group">
+      <span>{valueType === "number" ? formatPrice(value as number) : String(value)}</span>
+      <button
+        onClick={handleStartEdit}
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
+        aria-label={`Editar ${field}`}
+      >
+        <Pencil className="h-3 w-3 text-muted-foreground" />
+      </button>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -416,6 +486,250 @@ function ProductCard({
 }
 
 // ============================================================================
+// Delete confirmation dialog (VAL-CATALOG-009)
+// ============================================================================
+
+function DeleteConfirmDialog({
+  product,
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  product: Product | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>¿Estás seguro?</DialogTitle>
+          <DialogDescription>
+            Esta acción es permanente. Se eliminará el producto
+            {product ? (
+              <strong> {product.name}</strong>
+            ) : (
+              ""
+            )}{" "}
+            y no se podrá recuperar.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex gap-2 sm:justify-end">
+          <DialogClose render={<Button variant="outline" />}>
+            Cancelar
+          </DialogClose>
+          <Button variant="destructive" onClick={onConfirm}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Eliminar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================================
+// Column definitions
+// ============================================================================
+
+function createColumns(
+  providerMode: boolean,
+  onSave: (productId: string, field: EditableField, value: string | number) => string | true,
+  onDelete: (product: Product) => void,
+): ColumnDef<Product>[] {
+  const columns: ColumnDef<Product>[] = [
+    {
+      accessorKey: "imageUrl",
+      header: () => <span className="sr-only">Imagen</span>,
+      size: 60,
+      cell: ({ row }) => {
+        const url = row.original.imageUrl;
+        if (url) {
+          return (
+            <img
+              src={url}
+              alt={row.original.name}
+              className="h-10 w-10 rounded object-cover"
+            />
+          );
+        }
+        return (
+          <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
+          </div>
+        );
+      },
+      enableSorting: false,
+    },
+  ];
+
+  if (providerMode) {
+    // Editable columns in provider mode (VAL-CATALOG-002)
+    columns.push(
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <SortHeader column={column}>Producto</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <InlineEditableCell
+            value={row.original.name}
+            field="name"
+            productId={row.original._id}
+            onSave={onSave}
+          />
+        ),
+      },
+      {
+        accessorKey: "category",
+        header: ({ column }) => (
+          <SortHeader column={column}>Categoría</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <InlineEditableCell
+            value={row.original.category}
+            field="category"
+            productId={row.original._id}
+            onSave={onSave}
+          />
+        ),
+      },
+      {
+        accessorKey: "brand",
+        header: ({ column }) => (
+          <SortHeader column={column}>Marca</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <InlineEditableCell
+            value={row.original.brand}
+            field="brand"
+            productId={row.original._id}
+            onSave={onSave}
+          />
+        ),
+      },
+      {
+        accessorKey: "presentation",
+        header: ({ column }) => (
+          <SortHeader column={column}>Presentación</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <InlineEditableCell
+            value={row.original.presentation}
+            field="presentation"
+            productId={row.original._id}
+            onSave={onSave}
+          />
+        ),
+      },
+      {
+        accessorKey: "price",
+        header: ({ column }) => (
+          <SortHeader column={column}>Precio</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <InlineEditableCell
+            value={row.original.price}
+            field="price"
+            productId={row.original._id}
+            onSave={onSave}
+            valueType="number"
+          />
+        ),
+      },
+      {
+        id: "reviewStatus",
+        header: "Estado",
+        cell: ({ row }) => {
+          const status = row.original.reviewStatus;
+          if (status === "needs_review") {
+            return <Badge variant="outline" className="text-amber-600 border-amber-300">Requiere revisión</Badge>;
+          }
+          return <Badge variant="secondary" className="text-green-600">Publicado</Badge>;
+        },
+        enableSorting: false,
+      },
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Acciones</span>,
+        size: 60,
+        cell: ({ row }) => (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(row.original);
+            }}
+            aria-label={`Eliminar ${row.original.name}`}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ),
+        enableSorting: false,
+      },
+    );
+  } else {
+    // Read-only columns for comercio view
+    columns.push(
+      {
+        accessorKey: "name",
+        header: ({ column }) => (
+          <SortHeader column={column}>Producto</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <span className="font-medium">{row.original.name}</span>
+        ),
+      },
+      {
+        accessorKey: "category",
+        header: ({ column }) => (
+          <SortHeader column={column}>Categoría</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <Badge variant="secondary" className="capitalize">
+            {row.original.category}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "brand",
+        header: ({ column }) => (
+          <SortHeader column={column}>Marca</SortHeader>
+        ),
+      },
+      {
+        accessorKey: "price",
+        header: ({ column }) => (
+          <SortHeader column={column}>Precio</SortHeader>
+        ),
+        cell: ({ row }) => (
+          <span className="font-semibold">{formatPrice(row.original.price)}</span>
+        ),
+      },
+      {
+        accessorKey: "providerId",
+        header: "Proveedor",
+        cell: ({ row }) => {
+          const id = row.original.providerId;
+          const shortId = id.split("|").pop() || id;
+          return (
+            <span className="text-sm text-muted-foreground truncate max-w-[120px] block">
+              {shortId}
+            </span>
+          );
+        },
+        enableSorting: false,
+      },
+    );
+  }
+
+  return columns;
+}
+
+// ============================================================================
 // Main component: ProductsTable
 // ============================================================================
 
@@ -423,16 +737,81 @@ export function ProductsTable({
   products,
   viewMode = "table",
   onViewModeChange,
+  providerMode = false,
 }: {
   products: Product[];
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
+  providerMode?: boolean;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const columns = useMemo(() => createColumns(), []);
+  const updateProduct = useMutation(api.products.updateProduct);
+  const removeProduct = useMutation(api.products.remove);
+
+  // Inline edit save handler with Zod validation (VAL-CATALOG-003)
+  const handleInlineSave = useCallback(
+    (productId: string, field: EditableField, value: string | number): string | true => {
+      // Full Zod validation of the edit
+      const product = products.find((p) => p._id === productId);
+      if (!product) return "Producto no encontrado";
+
+      const updateData: Partial<ProductEdit> = {
+        name: product.name,
+        brand: product.brand,
+        presentation: product.presentation,
+        price: product.price,
+        category: product.category,
+        [field]: value,
+      };
+
+      const result = ProductEditSchema.safeParse(updateData);
+      if (!result.success) {
+        return result.error.issues[0]?.message ?? "Valor inválido";
+      }
+
+      // Persist the single field update
+      updateProduct({
+        id: productId as Id<"products">,
+        [field]: value,
+      }).then(() => {
+        toast.success("Producto actualizado");
+      }).catch(() => {
+        toast.error("Error al actualizar el producto");
+      });
+
+      return true;
+    },
+    [products, updateProduct],
+  );
+
+  // Delete handler (VAL-CATALOG-009)
+  const handleDeleteClick = useCallback((product: Product) => {
+    setDeleteTarget(product);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (!deleteTarget) return;
+    removeProduct({ id: deleteTarget._id as Id<"products"> })
+      .then(() => {
+        toast.success(`Producto "${deleteTarget.name}" eliminado`);
+        setDeleteDialogOpen(false);
+        setDeleteTarget(null);
+      })
+      .catch(() => {
+        toast.error("Error al eliminar el producto");
+      });
+  }, [deleteTarget, removeProduct]);
+
+  const columns = useMemo(
+    () => createColumns(providerMode, handleInlineSave, handleDeleteClick),
+    [providerMode, handleInlineSave, handleDeleteClick],
+  );
 
   const table = useReactTable({
     data: products,
@@ -452,6 +831,8 @@ export function ProductsTable({
   });
 
   function handleProductClick(product: Product) {
+    // In provider mode, don't open detail modal on click (to avoid conflict with inline editing)
+    if (providerMode) return;
     setSelectedProduct(product);
     setModalOpen(true);
   }
@@ -522,7 +903,7 @@ export function ProductsTable({
               {table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer"
+                  className={providerMode ? "" : "cursor-pointer"}
                   onClick={() => handleProductClick(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
@@ -573,7 +954,6 @@ export function ProductsTable({
 
             {/* Page number buttons */}
             {Array.from({ length: Math.min(pageCount, 5) }, (_, i) => {
-              // Show pages around current page
               let pageNum: number;
               if (pageCount <= 5) {
                 pageNum = i;
@@ -611,14 +991,27 @@ export function ProductsTable({
         </div>
       )}
 
-      {/* Product detail modal */}
-      <ProductDetailModal
-        product={selectedProduct}
-        open={modalOpen}
+      {/* Product detail modal (comercio view only) */}
+      {!providerMode && (
+        <ProductDetailModal
+          product={selectedProduct}
+          open={modalOpen}
+          onOpenChange={(open) => {
+            setModalOpen(open);
+            if (!open) setSelectedProduct(null);
+          }}
+        />
+      )}
+
+      {/* Delete confirmation dialog */}
+      <DeleteConfirmDialog
+        product={deleteTarget}
+        open={deleteDialogOpen}
         onOpenChange={(open) => {
-          setModalOpen(open);
-          if (!open) setSelectedProduct(null);
+          setDeleteDialogOpen(open);
+          if (!open) setDeleteTarget(null);
         }}
+        onConfirm={handleDeleteConfirm}
       />
     </div>
   );

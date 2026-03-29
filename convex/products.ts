@@ -304,6 +304,107 @@ export const remove = mutation({
 });
 
 // ============================================================================
+// Inline edit — provider updates individual product fields (VAL-CATALOG-002, VAL-CATALOG-005)
+// ============================================================================
+
+export const updateProduct = mutation({
+  args: {
+    id: v.id("products"),
+    name: v.optional(v.string()),
+    brand: v.optional(v.string()),
+    presentation: v.optional(v.string()),
+    price: v.optional(v.number()),
+    category: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    const product = await ctx.db.get(args.id);
+    if (!product) {
+      throw new Error("Product not found");
+    }
+    if (product.providerId !== identity.tokenIdentifier) {
+      throw new Error("Not authorized to update this product");
+    }
+
+    // Validate individual fields if provided
+    if (args.price !== undefined) {
+      if (!isFinite(args.price) || args.price <= 0) {
+        throw new Error("Invalid price: must be a finite number greater than 0");
+      }
+    }
+    if (args.name !== undefined && args.name.trim().length === 0) {
+      throw new Error("El nombre es obligatorio");
+    }
+    if (args.brand !== undefined && args.brand.trim().length === 0) {
+      throw new Error("La marca es obligatoria");
+    }
+    if (args.presentation !== undefined && args.presentation.trim().length === 0) {
+      throw new Error("La presentación es obligatoria");
+    }
+    if (args.category !== undefined && args.category.trim().length === 0) {
+      throw new Error("La categoría es obligatoria");
+    }
+
+    // Build patch object from provided fields only
+    const patch: Record<string, unknown> = { updatedAt: Date.now() };
+    if (args.name !== undefined) patch.name = args.name.trim();
+    if (args.brand !== undefined) patch.brand = args.brand.trim();
+    if (args.presentation !== undefined) patch.presentation = args.presentation.trim();
+    if (args.price !== undefined) patch.price = args.price;
+    if (args.category !== undefined) patch.category = args.category.trim();
+    if (args.subcategory !== undefined) patch.subcategory = args.subcategory.trim();
+    if (args.tags !== undefined) patch.tags = args.tags;
+
+    await ctx.db.patch(args.id, patch);
+    return { success: true };
+  },
+});
+
+// ============================================================================
+// Batch publish — set all needs_review products to ok (VAL-CATALOG-004)
+// ============================================================================
+
+export const batchPublishAll = mutation({
+  args: {},
+  handler: async (ctx, _args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Authentication required");
+    }
+
+    const providerId = identity.tokenIdentifier;
+
+    // Fetch all needs_review products for this provider
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_provider", (q) => q.eq("providerId", providerId))
+      .collect();
+
+    const needsReview = products.filter(
+      (p) => p.reviewStatus === "needs_review"
+    );
+
+    const now = Date.now();
+    let published = 0;
+    for (const product of needsReview) {
+      await ctx.db.patch(product._id, {
+        reviewStatus: "ok",
+        updatedAt: now,
+      });
+      published++;
+    }
+
+    return { published, total: needsReview.length };
+  },
+});
+
+// ============================================================================
 // Internal mutations for pipeline batch operations
 // ============================================================================
 

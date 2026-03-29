@@ -1,20 +1,36 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { ProductsTable } from "@/components/products-table";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Package, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 type Product = Doc<"products">;
 
 export default function ProveedorProductosPage() {
   const products = useQuery(api.products.listOwn, {}) as Product[] | undefined;
   const [filter, setFilter] = useState<"all" | "needs_review">("all");
+
+  // Publish all confirmation dialog
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
+
+  // Batch publish mutation (VAL-CATALOG-004)
+  const batchPublishAll = useMutation(api.products.batchPublishAll);
 
   const filteredProducts = products?.filter((p: Product) => {
     if (filter === "needs_review") return p.reviewStatus === "needs_review";
@@ -25,6 +41,17 @@ export default function ProveedorProductosPage() {
     (p: Product) => p.reviewStatus === "needs_review"
   ).length ?? 0;
 
+  const handlePublishAll = async () => {
+    try {
+      const result = await batchPublishAll({});
+      toast.success(`${result.published} producto${result.published !== 1 ? "s" : ""} publicado${result.published !== 1 ? "s" : ""} correctamente`);
+      setPublishDialogOpen(false);
+      setFilter("all");
+    } catch {
+      toast.error("Error al publicar productos");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -34,23 +61,37 @@ export default function ProveedorProductosPage() {
         </p>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2">
-        <Button
-          variant={filter === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("all")}
-        >
-          Todos ({products?.length ?? 0})
-        </Button>
-        <Button
-          variant={filter === "needs_review" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("needs_review")}
-        >
-          <Badge variant="secondary" className="mr-2">{needsReviewCount}</Badge>
-          Requieren Revisión
-        </Button>
+      {/* Filter tabs + actions */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2">
+          <Button
+            variant={filter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter("all")}
+          >
+            Todos ({products?.length ?? 0})
+          </Button>
+          <Button
+            variant={filter === "needs_review" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter("needs_review")}
+          >
+            <Badge variant="secondary" className="mr-2">{needsReviewCount}</Badge>
+            Requieren Revisión
+          </Button>
+        </div>
+
+        {/* Publicar todo button (VAL-CATALOG-004) */}
+        {needsReviewCount > 0 && (
+          <Button
+            onClick={() => setPublishDialogOpen(true)}
+            size="sm"
+            className="gap-2"
+          >
+            <CheckCircle className="h-4 w-4" />
+            Publicar todo
+          </Button>
+        )}
       </div>
 
       {filteredProducts.length === 0 ? (
@@ -68,8 +109,31 @@ export default function ProveedorProductosPage() {
           </p>
         </Card>
       ) : (
-        <ProductsTable products={filteredProducts} />
+        <ProductsTable products={filteredProducts} providerMode />
       )}
+
+      {/* Publicar todo confirmation dialog (VAL-CATALOG-004) */}
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar publicación</DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que querés publicar los {needsReviewCount} producto
+              {needsReviewCount !== 1 ? "s" : ""} que requieren revisión?
+              Todos serán marcados como publicados.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <DialogClose render={<Button variant="outline" />}>
+              Cancelar
+            </DialogClose>
+            <Button onClick={handlePublishAll}>
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Publicar {needsReviewCount} producto{needsReviewCount !== 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
