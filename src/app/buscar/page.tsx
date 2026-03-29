@@ -1,6 +1,6 @@
 "use client";
 
-import { ProductsTable } from "@/components/products-table";
+import { ProductsTable, type ViewMode } from "@/components/products-table";
 import { ProductSearch } from "@/components/product-search";
 import { TreeNavigation, EMPTY_TREE_FILTER } from "@/components/tree-navigation";
 import type { TreeFilter } from "@/components/tree-navigation";
@@ -19,6 +19,7 @@ export default function BuscarPage() {
   const { isSignedIn, isLoaded } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [treeFilter, setTreeFilter] = useState<TreeFilter>({ ...EMPTY_TREE_FILTER });
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   const allProducts = useQuery(api.products.list, {}) as Product[] | undefined;
 
@@ -99,7 +100,11 @@ export default function BuscarPage() {
         </div>
 
         <div className="mt-8">
-          <ProductsTable products={filteredProducts} />
+          <ProductsTable
+            products={filteredProducts}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+          />
         </div>
       </main>
     </div>
