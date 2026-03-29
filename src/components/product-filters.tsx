@@ -14,69 +14,30 @@ import {
   X,
   SlidersHorizontal,
 } from "lucide-react";
+import {
+  validatePriceRange,
+  EMPTY_FILTER_STATE,
+  SORT_OPTIONS,
+  type FilterState,
+  type PriceRange,
+  type SortOption,
+} from "@/lib/filters";
 
-export type SortOption =
-  | "relevance"
-  | "price_asc"
-  | "price_desc"
-  | "name_asc"
-  | "name_desc";
+// Re-export types and constants for convenience
+export type { FilterState, PriceRange, SortOption };
+export { EMPTY_FILTER_STATE, SORT_OPTIONS, validatePriceRange };
 
-export type PriceRange = { min: string; max: string };
-
-export type FilterState = {
-  priceRange: PriceRange;
-  selectedProviders: string[];
-  sort: SortOption;
-  onlyWithImage: boolean;
-};
-
-export const EMPTY_FILTER_STATE: FilterState = {
-  priceRange: { min: "", max: "" },
-  selectedProviders: [],
-  sort: "relevance",
-  onlyWithImage: false,
-};
-
-export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "relevance", label: "Relevancia" },
-  { value: "price_asc", label: "Precio: menor a mayor" },
-  { value: "price_desc", label: "Precio: mayor a menor" },
-  { value: "name_asc", label: "Nombre: A-Z" },
-  { value: "name_desc", label: "Nombre: Z-A" },
-];
-
-export function validatePriceRange(range: PriceRange): {
-  valid: boolean;
-  error?: string;
-} {
-  const minVal = range.min.trim();
-  const maxVal = range.max.trim();
-  if (minVal && isNaN(parseFloat(minVal))) {
-    return { valid: false, error: "El precio mínimo debe ser un número" };
-  }
-  if (maxVal && isNaN(parseFloat(maxVal))) {
-    return { valid: false, error: "El precio máximo debe ser un número" };
-  }
-  if (minVal && maxVal) {
-    const mn = parseFloat(minVal);
-    const mx = parseFloat(maxVal);
-    if (mn > mx) {
-      return { valid: false, error: "El precio mínimo no puede ser mayor que el máximo" };
-    }
-  }
-  return { valid: true };
-}
-
-type ProductForFilters = {
-  providerId: string;
-  imageUrl?: string;
-};
-
-export function ProductFilters({ filters, onFiltersChange, allProducts, onClearAll }: {
+export function ProductFilters({
+  filters,
+  onFiltersChange,
+  allProducts,
+  providerNames,
+  onClearAll,
+}: {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
-  allProducts: ProductForFilters[];
+  allProducts: { providerId: string }[];
+  providerNames: Map<string, string>;
   onClearAll: () => void;
 }) {
   const providerList = useMemo(() => {
@@ -133,12 +94,11 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
     filters.sort !== "relevance" ||
     filters.onlyWithImage;
 
-  const hasActiveFilters =
-    filters.priceRange.min.trim() !== "" ||
-    filters.priceRange.max.trim() !== "" ||
-    filters.selectedProviders.length > 0 ||
-    filters.sort !== "relevance" ||
-    filters.onlyWithImage;
+  function getProviderDisplayName(providerId: string): string {
+    const name = providerNames.get(providerId);
+    if (name) return name;
+    return providerId.split("|").pop() || providerId;
+  }
 
   return (
     <Card className="p-6">
@@ -150,7 +110,12 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
             <h3 className="text-lg font-semibold">Filtros</h3>
           </div>
           {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearAll} className="text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearAll}
+              className="text-muted-foreground"
+            >
               <X className="h-4 w-4 mr-1" />
               Limpiar filtros
             </Button>
@@ -191,7 +156,9 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
 
         {/* Sort controls */}
         <div className="space-y-2">
-          <div className="text-sm font-medium text-muted-foreground">Ordenar por</div>
+          <div className="text-sm font-medium text-muted-foreground">
+            Ordenar por
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {SORT_OPTIONS.map((opt) => (
               <Button
@@ -214,7 +181,7 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
         </div>
 
         {/* Provider checkboxes */}
-        {providerList.length > 1 && (
+        {providerList.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
               <Building2 className="h-4 w-4" />
@@ -222,7 +189,7 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
             </div>
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {providerList.map((item: { id: string; count: number }) => {
-                const shortId = item.id.split("|").pop() || item.id;
+                const displayName = getProviderDisplayName(item.id);
                 const isChecked = filters.selectedProviders.includes(item.id);
                 return (
                   <label
@@ -235,7 +202,7 @@ export function ProductFilters({ filters, onFiltersChange, allProducts, onClearA
                       onChange={() => toggleProvider(item.id)}
                       className="rounded border-muted-foreground"
                     />
-                    <span className="truncate flex-1">{shortId}</span>
+                    <span className="truncate flex-1">{displayName}</span>
                     <Badge variant="secondary" className="text-xs">
                       {item.count}
                     </Badge>

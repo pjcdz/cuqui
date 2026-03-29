@@ -92,9 +92,9 @@ describe("Pagination at 20 per page (VAL-DISPLAY-002)", () => {
 
 describe("Grid/card view toggle (VAL-DISPLAY-003)", () => {
   it("has a view mode toggle (table/grid)", () => {
-    const buscarPage = readFile("app/buscar/page.tsx");
+    const buscarContent = readFile("app/buscar/buscar-content.tsx");
     // Should have state for view mode
-    expect(buscarPage).toMatch(/viewMode|view.*mode|gridView|tableView|vista/i);
+    expect(buscarContent).toMatch(/viewMode|view.*mode|gridView|tableView|vista/i);
   });
 
   it("has grid/card rendering path", () => {
@@ -110,9 +110,9 @@ describe("Grid/card view toggle (VAL-DISPLAY-003)", () => {
   });
 
   it("toggle switches between table and card view", () => {
-    const buscarPage = readFile("app/buscar/page.tsx");
+    const buscarContent = readFile("app/buscar/buscar-content.tsx");
     // Should have both rendering paths
-    expect(buscarPage).toMatch(/table|grid|card/i);
+    expect(buscarContent).toMatch(/table|grid|card/i);
   });
 });
 
@@ -166,12 +166,12 @@ describe("TanStack React Table package installed", () => {
 
 describe("/buscar page renders product display with all features", () => {
   it("buscar page imports ProductsTable component", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/ProductsTable|products-table/i);
   });
 
   it("buscar page has view mode state", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/viewMode|vista|view/i);
   });
 

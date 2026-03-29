@@ -44,7 +44,11 @@ describe("Route structure", () => {
   });
 
   it("/buscar exists with search UI and tree navigation", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const pageContent = readFile("app/buscar/page.tsx");
+    // page.tsx wraps BuscarContent in Suspense
+    expect(pageContent).toContain("BuscarContent");
+    // Actual search UI and tree navigation are in buscar-content.tsx
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toContain("ProductSearch");
     expect(content).toContain("TreeNavigation");
     expect(content).toContain("ProductsTable");

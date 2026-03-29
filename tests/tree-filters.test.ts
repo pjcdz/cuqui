@@ -60,8 +60,8 @@ describe("Tree navigation level 4 — presentation (VAL-DISPLAY-005)", () => {
   });
 
   it("selecting presentation further filters products", () => {
-    const content = readFile("app/buscar/page.tsx");
-    // Buscar page should use presentation in filter logic
+    const content = readFile("app/buscar/buscar-content.tsx");
+    // Buscar content should use presentation in filter logic
     expect(content).toMatch(/presentation/);
   });
 });
@@ -97,12 +97,12 @@ describe("Price range filter (VAL-DISPLAY-006)", () => {
   });
 
   it("buscar page uses price filter", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/priceRange|minPrice|maxPrice|precioMin|precioMax/i);
   });
 
   it("price filter is applied to product list", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     // Should filter products by price range
     expect(content).toMatch(/price/);
   });
@@ -125,7 +125,7 @@ describe("Provider filter checkboxes (VAL-DISPLAY-007)", () => {
   });
 
   it("checking/unchecking filters products in real-time", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     // Should use selected providers in filtering
     expect(content).toMatch(/provider|proveedor/i);
   });
@@ -152,7 +152,7 @@ describe("Sort controls (VAL-DISPLAY-008)", () => {
   });
 
   it("sort is applied to filtered products", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/sort|orden/i);
   });
 });
@@ -168,7 +168,7 @@ describe("'Only with image' filter (VAL-DISPLAY-009)", () => {
   });
 
   it("filters products to only those with imageUrl", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/imageUrl|imagen|image/i);
   });
 
@@ -184,7 +184,7 @@ describe("'Only with image' filter (VAL-DISPLAY-009)", () => {
 
 describe("Filters accumulate with AND logic (VAL-DISPLAY-010)", () => {
   it("all filters combine in product filtering", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     // Should reference multiple filter criteria
     expect(content).toMatch(/priceRange|precioMin|precioMax|minPrice|maxPrice/i);
     expect(content).toMatch(/provider|proveedor/i);
@@ -193,7 +193,7 @@ describe("Filters accumulate with AND logic (VAL-DISPLAY-010)", () => {
   });
 
   it("filtered products count updates with each filter change", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/filteredProducts|length|count/i);
   });
 });
@@ -209,7 +209,7 @@ describe("Limpiar filtros clears all filters (VAL-DISPLAY-011)", () => {
   });
 
   it("clear button resets tree, price, providers, sort, and image toggle", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/limpiar|clear|reset/i);
   });
 });
@@ -225,7 +225,7 @@ describe("Empty state when no products match (VAL-DISPLAY-012)", () => {
   });
 
   it("user can clear filters from empty state", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/limpiar|clear|reset/i);
   });
 });
@@ -236,12 +236,12 @@ describe("Empty state when no products match (VAL-DISPLAY-012)", () => {
 
 describe("Filters reflected in URL query params", () => {
   it("buscar page reads filter state from URL params", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/searchParams|useSearchParams|URLSearchParams|router.*push|replaceState/i);
   });
 
   it("filter changes update URL query params", () => {
-    const content = readFile("app/buscar/page.tsx");
+    const content = readFile("app/buscar/buscar-content.tsx");
     expect(content).toMatch(/searchParams|push|replace|query/i);
   });
 });

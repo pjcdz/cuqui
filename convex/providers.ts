@@ -2,6 +2,16 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
+ * List all registered providers (public, used for provider filter on /buscar).
+ */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("providers").collect();
+  },
+});
+
+/**
  * Get the current authenticated provider's record.
  * Returns null if no provider record exists yet.
  */
