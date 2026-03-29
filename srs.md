@@ -694,7 +694,7 @@ Response:
 |----|-----------|---------|--------------|
 | **RNF-001** | Tiempo de respuesta de búsqueda | < 500ms (percentil 95) | Medir con Convex analytics |
 | **RNF-002** | Procesamiento de documentos | < 30 segundos | Timer en backend |
-| **RNF-003** | Indexación de productos | 10,000 productos/min | Batch insert test |
+| **RNF-003** | Indexación de productos | 10,000 productos/min | Medición operacional de throughput |
 | **RNF-004** | Carga inicial de página | < 2 segundos | Lighthouse metrics |
 | **RNF-005** | Tamaño de bundle JS | < 500 KB (gzipped) | Webpack bundle analyzer |
 
@@ -747,7 +747,7 @@ Response:
 | ID | Requisito | Descripción |
 |----|-----------|-------------|
 | **RNF-030** | Código limpio | ESLint + TypeScript strict mode |
-| **RNF-031** | Tests | Cobertura > 80% con Vitest |
+| **RNF-031** | Validación técnica | TypeScript strict mode, lint y build limpios |
 | **RNF-032** | Documentación | JSDoc en funciones críticas |
 | **RNF-033** | Logs | Structured logging (convex dev console) |
 | **RNF-034** | Deploy sin downtime | Vercel rolling deployments |
@@ -979,8 +979,7 @@ export async function GET(request: Request) {
   "@types/react-dom": "^19",
   "eslint": "^9",
   "eslint-config-next": "16.2.1",
-  "typescript": "^5",
-  "vitest": "^2.0.0"
+  "typescript": "^5"
 }
 ```
 
@@ -1319,7 +1318,7 @@ flowchart TD
 | Versión | Fecha | Autor | Cambios |
 |---------|-------|-------|---------|
 | 1.0 | 2026-03-25 | Equipo Cuqui | Versión inicial del SRS |
-| 1.1 | 2026-03-25 | Equipo Cuqui | **ACTUALIZACIÓN**: Agregar Secciones 8.6-8.11 con guía de implementación simplificada (80% reducción de código) |
+| 1.1 | 2026-03-27 | Equipo Cuqui | **ACTUALIZACIÓN**: Pipeline Files API-only de 3 etapas - row-based representation, batches de 10 filas, status simplificado ("ok", "needs_review"), sin extracción local |
 
 ### 8.5 Aprobaciones
 
@@ -1332,31 +1331,24 @@ flowchart TD
 
 ---
 
-### 8.6 GUÍA DE IMPLEMENTACIÓN V1.1 - SIMPLIFICACIÓN EXTREMA
+### 8.6 GUÍA DE IMPLEMENTACIÓN V1.1 - PIPELINE FILES API-ONLY DE 3 ETAPAS
 
-**PROPÓSITO**: Esta sección documenta la estrategia de implementación simplificada para Cuqui v1.0, basada en investigación de documentación oficial de Google, Convex skills y shadcn/ui.
+**PROPÓSITO**: Esta sección documenta la estrategia de implementación del pipeline de ingesta basado exclusivamente en Gemini Files API, con extracción y normalización realizadas por modelos de IA.
 
-**PRINCIPIO RECTOR**: Eliminar toda sobreingeniería del proyecto legacy. Usar SOLO patrones oficiales, probados y documentados.
+**PRINCIPIOS RECTORES**:
+- Sin extracción/parsing local de contenido del documento
+- Toda la comprensión y extracción ocurre a través de Gemini Files API
+- El modelo, no código local, realiza la normalización semántica
+- Código local solo valida, convierte unidades, calcula precios normalizados y persiste
 
-#### 8.6.1 Stack Simplificado Backend
+#### 8.6.1 Arquitectura del Pipeline de 3 Etapas
 
 **Tecnología**: Gemini Files API SDK Oficial + Convex Actions
 
-**Patrón Oficial Google** (3 líneas de código):
-```typescript
-// 1. Upload archivo
-const file = await client.files.upload({ file: "path.pdf" });
-
-// 2. Procesar con JSON estructurado
-const response = await client.models.generateContent({
-  model: "gemini-3.1-flash-lite-preview",
-  contents: [{ fileData: { uri: file.uri } }, { text: PROMPT }],
-  config: { responseMimeType: "application/json", responseSchema: SCHEMA }
-});
-
-// 3. Resultado garantizado
-const result = JSON.parse(response.text);
-```
+**Modelos utilizados**:
+- Stage 1: `gemini-3.1-pro` - Extracción de metadatos del documento
+- Stage 2: `gemini-3.1-pro` - Extracción de representación basada en filas
+- Stage 3: `gemini-3.1-flash-lite-preview` - Procesamiento de batches de 10 filas
 
 **Límites Oficiales Gemini Files API**:
 - 2GB máximo por archivo
@@ -1364,332 +1356,195 @@ const result = JSON.parse(response.text);
 - 48 horas de almacenamiento auto-eliminación
 - PDF límite: 50MB
 
-**Recomendación Oficial**: Usar SDK (no REST) para productividad.
+#### 8.6.2 Flujo del Pipeline
 
-#### 8.6.2 Implementación Backend Simplificada
-
-**Archivo**: `convex/ingest.ts` (~100 líneas vs 2500 del legacy)
-
-```typescript
-"use node";
-
-import { action } from "./_generated/server";
-import { v } from "convex/values";
-import { GoogleGenAI } from "@google/generative-ai";
-import fs from "node:fs/promises";
-
-const EXTRACT_PROMPT = `Extrae productos de este catálogo en JSON:
-{
-  "items": [
-    {
-      "name": "string",
-      "brand": "string",
-      "presentation": "string",
-      "price": number,
-      "category": "string",
-      "tags": ["string"]
-    }
-  ]
-}`;
-
-const PRODUCT_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    items: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          name: { type: "STRING" },
-          brand: { type: "STRING" },
-          presentation: { type: "STRING" },
-          price: { type: "NUMBER" },
-          category: { type: "STRING" },
-          tags: {
-            type: "ARRAY",
-            items: { type: "STRING" }
-          }
-        },
-        required: ["name", "brand", "presentation", "price", "category", "tags"]
-      }
-    }
-  },
-  required: ["items"]
-};
-
-export const ingestCatalog = action({
-  args: {
-    fileBase64: v.string(),
-    mimeType: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const client = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY
-    });
-
-    // 1. Upload a Gemini (SIN BATCHING)
-    const buffer = Buffer.from(args.fileBase64, "base64");
-    const tempPath = `/tmp/${Date.now()}.pdf`;
-    await fs.writeFile(tempPath, buffer);
-
-    const file = await client.files.upload({
-      file: tempPath,
-      config: { mimeType: args.mimeType }
-    });
-
-    try {
-      // 2. Procesar (SIN BATCHING - TODO DE UNA VEZ)
-      const response = await client.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [
-          { fileData: { uri: file.uri, mimeType: file.mimeType } },
-          { text: EXTRACT_PROMPT }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: PRODUCT_SCHEMA
-        }
-      });
-
-      const result = JSON.parse(response.text);
-
-      // 3. Guardar todo de una vez (SIN BATCHES)
-      for (const product of result.items) {
-        await ctx.runMutation(api.products.create, {
-          name: product.name,
-          brand: product.brand,
-          presentation: product.presentation,
-          price: product.price,
-          category: product.category,
-          tags: product.tags,
-        });
-      }
-
-      return { processed: result.items.length };
-
-    } finally {
-      // 4. Cleanup
-      await fs.unlink(tempPath);
-      await client.files.delete({ name: file.name });
-    }
-  }
-});
+```
+[Archivo PDF/Excel]
+       ↓
+1. Upload a Gemini Files API
+       ↓
+2. Stage 1: Extraer metadatos (gemini-3.1-pro)
+   - Tipo de documento
+   - Estructura de páginas
+   - Tablas detectadas
+   - Reglas globales de interpretación
+       ↓
+3. Stage 2: Extraer filas (gemini-3.1-pro)
+   - Cada fila representa una línea de producto
+   - Row ID único (ej: "page-3-row-5")
+   - Contexto de tabla/page
+   - Total de filas extraídas
+       ↓
+4. Crear batches de 10 filas
+       ↓
+5. Stage 3: Procesar batches (gemini-3.1-flash-lite-preview)
+   - Batch de 10 filas → productos estructurados
+   - Validación: response.batchContext coincide con el batch solicitado
+   - Status: "ok" o "needs_review" (únicamente dos valores)
+       ↓
+6. Persistir productos normalizados
 ```
 
-**Diferencias Clave vs Legacy**:
-- ❌ Sin batching (procesa todo de una vez)
-- ❌ Sin fast path de PDF
-- ❌ Sin fallbacks
-- ✅ Una sola llamada a Gemini
-- ✅ Una sola iteración para guardar
-- ✅ ~100 líneas vs ~2500 del legacy
+**Validaciones por etapa**:
+- Stage 1: Zod validation de DocumentMetadata
+- Stage 2: Zod validation de DocumentRows + unicidad de row IDs
+- Stage 3: Zod validation de ProductBatchResponse + validación de batch context + validación de sourceRowIds
+
+#### 8.6.3 Diferencias con Diseños Anteriores
+
+**Características del Pipeline Files API-Only**:
+- ✅ No local extraction/parsing - todo a través de Gemini Files API
+- ✅ Row-based representation en lugar de page chunks
+- ✅ Batches de 10 filas en lugar de chunks por página
+- ✅ Status simplificado: solo "ok" y "needs_review" (antes: 5 valores)
+- ✅ Batch validation: responses deben coincidir con el batch solicitado
+- ✅ La normalización semántica la hace el modelo, no regex local
+
+#### 8.6.2 Archivos de Implementación
+
+**Archivo**: `convex/lib/schemas.ts`
+- Define Zod schemas para las 3 etapas
+- DocumentMetadata, DocumentRows, ProductBatchResponse
+- Prompts explícitos para cada modelo
+
+**Archivo**: `convex/ingest.ts`
+- Pipeline de 3 etapas con Files API
+- Stage 1: extractDocumentMetadata() → gemini-3.1-pro
+- Stage 2: extractDocumentRows() → gemini-3.1-pro
+- Stage 3: processBatch() → gemini-3.1-flash-lite-preview
+- Validación Zod en cada etapa
+- Validación de batch context
+
+**Archivo**: `convex/schema.ts`
+- Schema de productos simplificado
+- Campos normalizados como source of truth
+- Status: solo "ok" y "needs_review"
 
 #### 8.6.3 Implementación Frontend con shadcn/ui
 
 **Stack**: shadcn/ui + TanStack Tables + Sonner
 
-**Componentes a Instalar**:
+**Componentes Instalados**:
 ```bash
-pnpm dlx shadcn@latest add table button card input form progress sonner
-pnpm add @tanstack/react-table react-hook-form zod sonner lucide-react
+npx shadcn@latest add table button card input form progress sonner
 ```
 
-**Componente 1: File Upload** (`components/upload.tsx`):
-```tsx
-"use client";
+**Componente**: `src/components/upload-catalog.tsx`
+- Interface de carga de archivos
+- Muestra progreso por etapas
+- Display de resultados con batches/rows
+- Toast notifications según resultados
 
-import { useState } from "react";
-import { useAction } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { toast } from "sonner";
-import { Upload } from "lucide-react";
+#### 8.6.4 Schema Simplificado
 
-export function CatalogUpload() {
-  const ingest = useAction(api.ingest.ingestCatalog);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  const handleFile = async (file: File) => {
-    setUploading(true);
-    setProgress(10);
-
-    try {
-      const base64 = await file.arrayBuffer()
-        .then(b => Buffer.from(b).toString("base64"));
-
-      setProgress(50);
-
-      const result = await ingest({
-        fileBase64: base64,
-        mimeType: file.type,
-      });
-
-      setProgress(100);
-      toast.success(`Procesados ${result.processed} productos`);
-    } catch (error) {
-      toast.error("Error al procesar catálogo");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <Card className="p-6">
-      <input
-        type="file"
-        accept=".pdf,.xlsx,.xls"
-        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-        disabled={uploading}
-        className="mb-4"
-      />
-      {uploading && <Progress value={progress} className="w-full" />}
-    </Card>
-  );
-}
-```
-
-**Componente 2: Products Table** (`components/products-table.tsx`):
-```tsx
-"use client";
-
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-
-export function ProductsTable() {
-  const { data, isLoading } = useQuery(api.products.list);
-
-  if (isLoading) return <div>Cargando...</div>;
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Producto</TableHead>
-          <TableHead>Marca</TableHead>
-          <TableHead>Presentación</TableHead>
-          <TableHead>Precio</TableHead>
-          <TableHead>Categoría</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data?.map((product) => (
-          <TableRow key={product._id}>
-            <TableCell>{product.name}</TableCell>
-            <TableCell>{product.brand}</TableCell>
-            <TableCell>{product.presentation}</TableCell>
-            <TableCell>${product.price}</TableCell>
-            <TableCell>{product.category}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-```
-
-#### 8.6.4 Setup Inicial Convex + Clerk
-
-**Comando Recomendado**:
-```bash
-npm create convex@latest cuqui -- -t react-vite-clerk-shadcn
-cd cuqui
-```
-
-**Configuración Mínima Auth** (`convex/auth.config.ts`):
-```typescript
-export const auth = convexAuth({
-  providers: []
-});
-```
-
-**Schema Simple** (`convex/schema.ts`):
+**Archivo**: `convex/schema.ts`
 ```typescript
 export default defineSchema({
-  ...authTables,
   products: defineTable({
+    // Core fields
     name: v.string(),
     brand: v.string(),
     presentation: v.string(),
     price: v.number(),
     category: v.string(),
     tags: v.array(v.string()),
-    providerId: v.id("providers"),
-  }).index("by_tags", ["tags"]),
+
+    // Provider & timestamps
+    providerId: v.string(),
+    imageUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+
+    // Normalized pricing (source of truth)
+    normalizedPrice: v.optional(v.number()),
+    unitOfMeasure: v.optional(v.string()),
+    quantity: v.optional(v.number()),
+    multiplier: v.optional(v.number()),
+
+    // Pipeline fields
+    rawText: v.optional(v.string()),
+    canonicalName: v.optional(v.string()),
+    subcategory: v.optional(v.string()),
+    packagingType: v.optional(v.string()),
+    saleFormat: v.optional(v.string()),
+    priceType: v.optional(v.string()),
+    confidence: v.optional(v.number()),
+    reviewStatus: v.optional(v.string()), // "ok" or "needs_review" only
+    ambiguityNotes: v.optional(v.array(v.string())),
+  })
+    .index("by_provider", ["providerId"])
+    .index("by_tags", ["tags"])
+    .index("by_category", ["category"])
+    .index("by_review_status", ["reviewStatus"]),
 });
 ```
 
 **Patrones Recomendados**:
 - ✅ Queries con `withIndex` (no filters)
-- ✅ Mutations con validación completa
+- ✅ Mutations con validación de status ("ok", "needs_review")
 - ✅ Actions para llamadas externas (Gemini)
-- ✅ `getAuthUserId()` para auth
+- ✅ Zod validation en cada etapa del pipeline
 
-#### 8.6.5 Patrón Oficial Google - Referencia
+#### 8.6.5 Validaciones del Pipeline
 
-**Fuente**: [Gemini Files API Docs](https://ai.google.dev/gemini-api/docs/files)
+**Stage 1 - Metadata**:
+- Zod validation: DocumentMetadataSchema
+- Retry hasta 3 intentos con backoff
+- Retorna: páginas, layout types, tablas, reglas globales
 
-**Patrón Recomendado** (únicas 3 líneas necesarias):
-```typescript
-// 1. Upload
-const file = await client.files.upload({ file: "path.pdf" });
+**Stage 2 - Rows**:
+- Zod validation: DocumentRowsSchema
+- Validación de unicidad de row IDs
+- Retry hasta 3 intentos con backoff
+- Retorna: todas las filas del documento
 
-// 2. Generate
-const response = await client.models.generateContent({
-  model: "gemini-3.1-flash-lite-preview",
-  contents: [file, PROMPT],
-  config: { responseMimeType: "application/json", responseSchema: SCHEMA }
-});
+**Stage 3 - Batch**:
+- Zod validation: ProductBatchResponseSchema
+- Validación de batch context (batchIndex, totalBatches)
+- Validación de sourceRowIds (deben pertenecer al batch)
+- Retorna: productos estructurados del batch
 
-// 3. Cleanup (opcional, auto 48h)
-await client.files.delete({ name: file.name });
-```
+**Normalización Local**:
+- Solo conversión de unidades (ml→litro, g→kg)
+- Cálculo de precios normalizados
+- No extracción semántica (la hace el modelo)
 
-#### 8.6.6 Eliminaciones vs Diseño Original
+#### 8.6.6 Características del Pipeline Files API-Only
 
-**❌ ELIMINADO PARA SIMPLIFICACIÓN**:
-1. **Batching system** (25 items por batch) → Procesar todo de una vez
-2. **PDF fast path** (custom parser) → Solo Gemini Files API
-3. **REST API fallback** → Solo SDK oficial
-4. **Custom JSON parsing** → responseSchema (garantizado)
-5. **Artifacts system** → Guardar resultado directamente
-6. **Review tasks** → Eliminar para MVP v1.0
-7. **7 estados de job** → 3 estados: received → processing → completed/failed
+**✅ IMPLEMENTADO**:
+1. **3 etapas distintas** - Metadata → Rows → Batches
+2. **Row-based representation** - Cada fila es una línea de producto
+3. **Batches de 10 filas** - Para procesamiento eficiente con flash-lite
+4. **Validación de batch context** - Responses validadas contra requested batch
+5. **Status simplificado** - Solo "ok" y "needs_review" (antes: 5 valores)
+6. **Zod validation en cada etapa** - Garantía de estructura de datos
+7. **Retries con backoff** - Hasta 3 intentos por etapa
 
-**✅ MANTENIDO DEL DISEÑO ORIGINAL**:
-1. **Prompt estructurado** - Funciona bien
-2. **responseSchema** - JSON estructurado garantizado
-3. **Tags system** - Core del árbol de búsqueda
-4. **shadcn/ui** - Components probados
-5. **Clerk + Convex** - Auth robusto
+**❌ ELIMINADO (comparado con diseños anteriores)**:
+1. **Local extraction/parsing** - Todo a través de Gemini Files API
+2. **Page chunk hints** - Reemplazado por row batches
+3. **PDF fast path** - No hay parsing local de PDF
+4. **Provider-specific code** - Solo Gemini, no fallbacks
+5. **Custom regex** - La normalización semántica la hace el modelo
+6. **Multiple status values** - Simplificado a 2 valores
 
-#### 8.6.7 Métricas de Simplificación
+#### 8.6.7 Métricas del Pipeline
 
-| Aspecto | v1.0 (Diseño Original) | v1.1 (Implementación) | Cambio |
-|---------|------------------------|-------------------|--------|
-| **Complejidad backend** | Alta | Mínima | ↓ 80% |
-| **Líneas de código** | ~2500 (estimado) | ~500 | ↓ 80% |
-| **Estados de job** | 7 | 3 | ↓ 57% |
-| **Fallbacks** | 3 (PDF fast, Gemini, REST) | 0 | ↓ 100% |
-| **Batching** | Sí (25 items) | No | ↓ 100% |
-| **Documentación** | Custom docs | Docs oficiales Google | ↑ Calidad |
+| Aspecto | Descripción |
+|---------|-------------|
+| **Etapas** | 3 (metadata, rows, batches) |
+| **Modelos** | gemini-3.1-pro (stages 1-2), gemini-3.1-flash-lite-preview (stage 3) |
+| **Batch size** | 10 filas por batch |
+| **Status values** | 2 ("ok", "needs_review") |
+| **Validaciones** | Zod en cada etapa + batch context validation |
+| **Retries** | Hasta 3 intentos por etapa con backoff |
 
 **Beneficios Clave**:
-- 📉 Menor superficie de bugs
-- 📖 Documentación oficial siempre actualizada
-- 🔧 Mantenimiento simplificado
-- 🚀 Time-to-market reducido
-- ✅ Código replicable y escalable
+- 📉 Sin parsing local - reducción de complejidad
+- 📖 Files API como única fuente de verdad
+- 🔧 Validaciones robustas con Zod
+- 🚀 Batch processing eficiente
+- ✅ Status simplificado para workflow claro
 
 ---
 
@@ -1734,7 +1589,7 @@ await client.files.delete({ name: file.name });
 6. ⏳ Implementar `convex/ingest.ts` (~100 líneas)
 7. ⏳ Implementar componentes frontend (Upload, Table)
 8. ⏳ Crear lógica de árbol dinámico
-9. ⏳ Test con catálogo real
+9. ⏳ Validar ingestión con catálogo real
 
 ---
 

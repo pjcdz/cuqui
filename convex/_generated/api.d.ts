@@ -9,10 +9,11 @@
  */
 
 import type * as ingest from "../ingest.js";
-import type * as lib_chunking from "../lib/chunking.js";
-import type * as lib_normalization from "../lib/normalization.js";
+import type * as ingestionProgress from "../ingestionProgress.js";
 import type * as lib_schemas from "../lib/schemas.js";
+import type * as lib_validation from "../lib/validation.js";
 import type * as products from "../products.js";
+import type * as providers from "../providers.js";
 
 import type {
   ApiFromModules,
@@ -22,10 +23,11 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   ingest: typeof ingest;
-  "lib/chunking": typeof lib_chunking;
-  "lib/normalization": typeof lib_normalization;
+  ingestionProgress: typeof ingestionProgress;
   "lib/schemas": typeof lib_schemas;
+  "lib/validation": typeof lib_validation;
   products: typeof products;
+  providers: typeof providers;
 }>;
 
 /**

@@ -1,34 +1,73 @@
 "use client";
 
-import { useState } from "react";
-import { useAction } from "convex/react";
+import { useState, useEffect } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { useAuth } from "@clerk/nextjs";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, CheckCircle2, AlertCircle, FileText, Clock } from "lucide-react";
+import { CheckCircle2, AlertCircle, FileText, Clock, AlertTriangle } from "lucide-react";
 
 interface IngestResult {
+  ingestionId: Id<"ingestionRuns">;
   processed: number;
   needsReview: number;
-  failedChunks: number[];
-  totalChunks: number;
+  failedProducts: number;
+  failedBatches: number[];
+  totalBatches: number;
+  totalRows: number;
   duration: number;
   metadata: {
     documentType: string;
     pages: number;
-    sections: number;
     ambiguities: number;
   };
 }
 
+interface IngestionProgress {
+  status: string;
+  progressPercent: number;
+  message: string;
+  currentBatch?: number;
+  totalBatches?: number;
+  processedRows?: number;
+  totalRows?: number;
+  errorMessage?: string;
+}
+
 export function CatalogUpload() {
+  const { isSignedIn } = useAuth();
+  const createRun = useMutation(api.ingestionProgress.createRun);
   const ingest = useAction(api.ingest.ingestCatalog);
+  const processBatchesAction = useAction(api.ingest.processBatches);
+  const [uploading, setUploading] = useState(false);
+  const [localProgress, setLocalProgress] = useState(0);
+  const [localProgressLabel, setLocalProgressLabel] = useState("Procesando archivo...");
+  const [ingestionId, setIngestionId] = useState<Id<"ingestionRuns"> | null>(null);
+  const [result, setResult] = useState<IngestResult | null>(null);
+  const runProgress = useQuery(
+    api.ingestionProgress.get,
+    ingestionId ? { ingestionId } : "skip"
+  ) as IngestionProgress | null | undefined;
+
+  const progressValue = runProgress?.progressPercent ?? localProgress;
+  const progressLabel = runProgress?.message ?? localProgressLabel;
+
+  // Navigation protection during upload
+  useEffect(() => {
+    if (!uploading) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [uploading]);
 
   // Handle undefined during initial load
-  if (!ingest) {
+  if (!ingest || !createRun) {
     return (
       <Card className="p-6">
         <p className="text-muted-foreground">Conectando a Convex...</p>
@@ -36,49 +75,102 @@ export function CatalogUpload() {
     );
   }
 
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<IngestResult | null>(null);
-
   const handleFile = async (file: File) => {
+    if (!isSignedIn) {
+      toast.error("Tenés que iniciar sesión para subir catálogos");
+      return;
+    }
+
+    const allowedMimeTypes = new Set([
+      "application/pdf",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]);
+
+    if (!allowedMimeTypes.has(file.type)) {
+      toast.error("Formato no soportado. Subí un PDF o Excel válido");
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("El archivo supera el límite de 50 MB");
+      return;
+    }
+
     setUploading(true);
-    setProgress(10);
+    setLocalProgress(5);
+    setLocalProgressLabel("Preparando archivo...");
     setResult(null);
+    setIngestionId(null);
 
     try {
-      const base64 = await file.arrayBuffer()
-        .then(b => Buffer.from(b).toString("base64"));
+      const newIngestionId = await createRun({});
+      setIngestionId(newIngestionId);
 
-      setProgress(50);
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          resolve(dataUrl.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      setLocalProgress(10);
+      setLocalProgressLabel("Iniciando procesamiento...");
 
       const ingestResult = await ingest({
+        ingestionId: newIngestionId,
         fileBase64: base64,
         mimeType: file.type,
       });
 
-      setProgress(100);
-      setResult(ingestResult as IngestResult);
+      // If there are rows to process, call processBatches
+      let finalResult: IngestResult;
+      if (ingestResult.totalRows > 0) {
+        const batchResult = await processBatchesAction({
+          ingestionId: newIngestionId,
+        });
+        finalResult = batchResult as IngestResult;
+      } else {
+        finalResult = {
+          ingestionId: ingestResult.ingestionId,
+          processed: 0,
+          needsReview: 0,
+          failedProducts: 0,
+          failedBatches: [],
+          totalBatches: 0,
+          totalRows: 0,
+          duration: 0,
+          metadata: ingestResult.metadata,
+        };
+      }
+
+      setResult(finalResult as IngestResult);
 
       // Show appropriate toast based on results
-      if (ingestResult.failedChunks.length > 0) {
+      if (finalResult.failedBatches.length > 0 || finalResult.failedProducts > 0) {
         toast.error(
-          `Procesamiento parcial: ${ingestResult.processed} productos, ${ingestResult.failedChunks.length} chunks fallidos`,
+          `Procesamiento parcial: ${finalResult.processed} productos, ${finalResult.failedProducts} productos fallidos, ${finalResult.failedBatches.length} batches fallidos`,
           { duration: 5000 }
         );
-      } else if (ingestResult.needsReview > 0) {
+      } else if (finalResult.needsReview > 0) {
         toast.warning(
-          `${ingestResult.processed} productos procesados, ${ingestResult.needsReview} requieren revisión`,
+          `${finalResult.processed} productos procesados, ${finalResult.needsReview} requieren revisión`,
           { duration: 5000 }
         );
       } else {
-        toast.success(`Procesados ${ingestResult.processed} productos correctamente`);
+        toast.success(`Procesados ${finalResult.processed} productos correctamente`);
       }
     } catch (error) {
       console.error(error);
-      toast.error("Error al procesar catálogo");
+      const message = error instanceof Error ? error.message : "Error al procesar catálogo";
+      toast.error(message);
     } finally {
       setUploading(false);
-      setProgress(0);
+      setLocalProgress(0);
+      setLocalProgressLabel("Procesando archivo...");
     }
   };
 
@@ -107,10 +199,20 @@ export function CatalogUpload() {
 
         {uploading && (
           <div className="w-full">
-            <Progress value={progress} className="w-full" />
+            <Progress value={progressValue} className="w-full" />
             <p className="text-sm text-muted-foreground mt-2">
-              Procesando... {progress}%
+              {progressLabel} {progressValue}%
             </p>
+            {runProgress?.totalBatches ? (
+              <p className="text-sm text-muted-foreground">
+                Batch {runProgress.currentBatch ?? 0} de {runProgress.totalBatches}
+                {" · "}
+                Filas {runProgress.processedRows ?? 0} / {runProgress.totalRows ?? 0}
+              </p>
+            ) : null}
+            {runProgress?.errorMessage ? (
+              <p className="text-sm text-red-600">{runProgress.errorMessage}</p>
+            ) : null}
           </div>
         )}
 
@@ -135,16 +237,28 @@ export function CatalogUpload() {
                 </div>
               )}
 
-              {result.failedChunks.length > 0 && (
+              {result.failedBatches.length > 0 && (
                 <div className="flex flex-col">
-                  <span className="text-2xl font-bold text-red-600">{result.failedChunks.length}</span>
-                  <span className="text-sm text-muted-foreground">Chunks Fallidos</span>
+                  <span className="text-2xl font-bold text-red-600">{result.failedBatches.length}</span>
+                  <span className="text-sm text-muted-foreground">Batches Fallidos</span>
+                </div>
+              )}
+
+              {result.failedProducts > 0 && (
+                <div className="flex flex-col">
+                  <span className="text-2xl font-bold text-red-600">{result.failedProducts}</span>
+                  <span className="text-sm text-muted-foreground">Productos Fallidos</span>
                 </div>
               )}
 
               <div className="flex flex-col">
-                <span className="text-2xl font-bold">{result.totalChunks}</span>
-                <span className="text-sm text-muted-foreground">Total Chunks</span>
+                <span className="text-2xl font-bold">{result.totalBatches}</span>
+                <span className="text-sm text-muted-foreground">Total Batches</span>
+              </div>
+
+              <div className="flex flex-col">
+                <span className="text-2xl font-bold">{result.totalRows}</span>
+                <span className="text-sm text-muted-foreground">Total Filas</span>
               </div>
             </div>
 
@@ -163,12 +277,6 @@ export function CatalogUpload() {
                   <span className="text-muted-foreground">Páginas:</span>{" "}
                   <span className="font-medium">{result.metadata.pages}</span>
                 </div>
-                {result.metadata.sections > 0 && (
-                  <div>
-                    <span className="text-muted-foreground">Secciones:</span>{" "}
-                    <span className="font-medium">{result.metadata.sections}</span>
-                  </div>
-                )}
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Duración:</span>{" "}
                   <span className="font-medium flex items-center gap-1">
@@ -188,11 +296,27 @@ export function CatalogUpload() {
               )}
             </div>
 
-            {result.failedChunks.length > 0 && (
+            {result.failedBatches.length > 0 && (
               <div className="bg-red-50 dark:bg-red-950/20 p-3 rounded-lg">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">
-                  Chunks fallidos: {result.failedChunks.join(", ")}
+                  Batches fallidos: {result.failedBatches.join(", ")}
                 </p>
+              </div>
+            )}
+
+            {/* Warning for 0 products */}
+            {result.processed === 0 && result.totalRows === 0 && (
+              <div className="bg-yellow-50 dark:bg-yellow-950/20 p-4 rounded-lg flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400">
+                    No se encontraron productos en este documento
+                  </p>
+                  <p className="text-sm text-yellow-600 dark:text-yellow-500 mt-1">
+                    El documento fue procesado como <Badge variant="secondary">{result.metadata.documentType}</Badge> pero no se detectaron filas de productos.
+                    Verificá que el archivo contenga un catálogo con productos y precios.
+                  </p>
+                </div>
               </div>
             )}
           </div>

@@ -19,6 +19,7 @@ type Product = {
   normalizedPrice?: number;
   unitOfMeasure?: string;
   category: string;
+  subcategory?: string;
   tags: string[];
 };
 
@@ -40,10 +41,10 @@ export function ProductsTable({ products }: { products: Product[] }) {
             <TableHead>Producto</TableHead>
             <TableHead>Marca</TableHead>
             <TableHead>Presentación</TableHead>
-            <TableHead>Precio Total</TableHead>
-            <TableHead>Precio Normalizado</TableHead>
+            <TableHead>Precio</TableHead>
+            <TableHead>Precio Norm.</TableHead>
             <TableHead>Categoría</TableHead>
-            <TableHead>Tags</TableHead>
+            <TableHead>Subcat.</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -69,23 +70,7 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   {normalizedDisplay}
                 </TableCell>
                 <TableCell>{product.category}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {product.tags.slice(0, 3).map((tag, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-secondary text-secondary-foreground"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                    {product.tags.length > 3 && (
-                      <span className="text-xs text-muted-foreground">
-                        +{product.tags.length - 3}
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
+                <TableCell className="capitalize">{product.subcategory ?? "—"}</TableCell>
               </TableRow>
             );
           })}
