@@ -56,6 +56,11 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 // Price range validation (VAL-DISPLAY-006)
 // ============================================================================
 
+/**
+ * Validate a price range, ensuring min and max are valid numbers and min <= max.
+ * @param range - Object with min and max string values
+ * @returns Object with valid flag and optional error message
+ */
 export function validatePriceRange(range: PriceRange): {
   valid: boolean;
   error?: string;
@@ -97,6 +102,14 @@ export type FilterableProduct = {
   imageUrl?: string;
 };
 
+/**
+ * Apply all filters (tree, price, provider, image, search) and sorting to a product list.
+ * @param products - Array of filterable products
+ * @param treeFilter - Category/subcategory/brand/presentation tree filter
+ * @param filters - Price range, provider, sort, and image filter state
+ * @param searchQuery - Text search query
+ * @returns Filtered and sorted product array
+ */
 export function applyAllFilters<T extends FilterableProduct>(
   products: T[],
   treeFilter: TreeFilter,
@@ -164,6 +177,12 @@ export function applyAllFilters<T extends FilterableProduct>(
   return sortProducts(filtered, filters.sort);
 }
 
+/**
+ * Sort products by the specified sort option (price, name, or relevance).
+ * @param products - Array of products with name and price fields
+ * @param sort - Sort option to apply
+ * @returns New sorted array
+ */
 export function sortProducts<T extends { name: string; price: number }>(
   products: T[],
   sort: SortOption
@@ -192,6 +211,11 @@ export function sortProducts<T extends { name: string; price: number }>(
 // URL query param serialization (for shareability)
 // ============================================================================
 
+/**
+ * Parse filter state from URL query parameters for shareable filter URLs.
+ * @param params - URL search params to parse
+ * @returns Object with treeFilter, filters, and searchQuery
+ */
 export function parseFiltersFromParams(params: URLSearchParams): {
   treeFilter: TreeFilter;
   filters: FilterState;
@@ -221,6 +245,13 @@ export function parseFiltersFromParams(params: URLSearchParams): {
   return { treeFilter, filters, searchQuery };
 }
 
+/**
+ * Serialize filter state to URL query parameters for shareable URLs.
+ * @param treeFilter - Category/subcategory/brand/presentation tree filter
+ * @param filters - Price range, provider, sort, and image filter state
+ * @param searchQuery - Text search query
+ * @returns URLSearchParams with non-empty filter values
+ */
 export function serializeFiltersToParams(
   treeFilter: TreeFilter,
   filters: FilterState,
@@ -245,6 +276,13 @@ export function serializeFiltersToParams(
   return params;
 }
 
+/**
+ * Check whether any filter is currently active (non-default).
+ * @param treeFilter - Tree filter state
+ * @param filters - Filter state
+ * @param searchQuery - Text search query
+ * @returns True if any filter differs from its default value
+ */
 export function hasAnyActiveFilter(
   treeFilter: TreeFilter,
   filters: FilterState,

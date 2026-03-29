@@ -553,6 +553,18 @@ function normalizeProduct(
 //   store intermediate state. Does NOT process batches.
 // ============================================================================
 
+/**
+ * Ingest a provider catalog file through the Gemini Files API pipeline.
+ *
+ * Uploads the file to Gemini Files API, polls until ACTIVE, then runs
+ * Stage 1 (metadata extraction) and Stage 2 (row extraction). Stores
+ * intermediate state for batch processing via `processBatches`.
+ *
+ * @param args.ingestionId - The ingestion run document ID
+ * @param args.fileBase64 - Base64-encoded file contents
+ * @param args.mimeType - MIME type of the uploaded file (PDF, XLS, XLSX)
+ * @returns Object with ingestionId, totalBatches, totalRows, and metadata summary
+ */
 export const ingestCatalog = action({
   args: {
     ingestionId: v.id("ingestionRuns"),
@@ -745,6 +757,17 @@ export const ingestCatalog = action({
 //   Supports starting from a specific batch index for resume.
 // ============================================================================
 
+/**
+ * Process all Stage 3 batches for an ingestion run.
+ *
+ * Reads stored metadata and rows from the ingestionRun document, then processes
+ * each batch through Gemini to extract structured product data. Normalizes and
+ * persists products to the database. Supports resuming from a specific batch index.
+ *
+ * @param args.ingestionId - The ingestion run document ID
+ * @param args.startFromBatch - Optional batch index to resume from (default: 0)
+ * @returns Object with processed, needsReview, failedProducts, failedBatches, timing, and metadata
+ */
 export const processBatches = action({
   args: {
     ingestionId: v.id("ingestionRuns"),
@@ -907,6 +930,16 @@ export const processBatches = action({
 //   Resumes a failed/stalled ingestion from the last unprocessed batch.
 // ============================================================================
 
+/**
+ * Resume a failed or stalled ingestion run from the last unprocessed batch.
+ *
+ * Checks the ingestion run status, determines which batches have already been
+ * processed (by comparing sourceRowIds of existing products), and delegates
+ * to `processBatches` starting from the first unprocessed batch.
+ *
+ * @param args.ingestionId - The ingestion run document ID to resume
+ * @returns Object with processed, needsReview, failedProducts, failedBatches, timing, and metadata
+ */
 export const resumeIngestion = action({
   args: {
     ingestionId: v.id("ingestionRuns"),

@@ -8,6 +8,12 @@ import { createLogger } from "./lib/logger";
 // Public catalog queries (RF-006, RF-007, RF-008) — comercio sees ALL products
 // ============================================================================
 
+/**
+ * List active products from the public catalog with optional limit.
+ * Only returns products where `active !== false`.
+ * @param args.limit - Maximum number of products to return (default 50, max 1000)
+ * @returns Array of active product documents
+ */
 export const list = query({
   args: {
     limit: v.optional(v.number()),
@@ -28,6 +34,13 @@ export const list = query({
   }
 });
 
+/**
+ * List products filtered by tags using AND logic.
+ * Uses the `by_tags` index for the first tag, then filters remaining tags in memory.
+ * @param args.tags - Array of tags to filter by (all must match)
+ * @param args.limit - Maximum number of products to return (default 500, max 1000)
+ * @returns Array of active products matching all specified tags
+ */
 export const getByTags = query({
   args: {
     tags: v.array(v.string()),
@@ -64,7 +77,15 @@ export const getByTags = query({
   }
 });
 
-// Búsqueda semántica/fuzzy (RF-012)
+/**
+ * Search products by name using full-text search with optional category and brand filters.
+ * Uses Convex searchIndex for efficient text matching.
+ * @param args.query - Search query string
+ * @param args.limit - Maximum number of results (default 500, max 1000)
+ * @param args.category - Optional category filter
+ * @param args.brand - Optional brand filter
+ * @returns Array of active products matching the search query
+ */
 export const search = query({
   args: {
     query: v.string(),
@@ -114,6 +135,13 @@ export const search = query({
 // Provider catalog management (RF-004, RNF-007) — provider sees ONLY their products
 // ============================================================================
 
+/**
+ * List products belonging to the authenticated provider.
+ * Only returns the provider's own products, with optional inactive product inclusion.
+ * @param args.limit - Maximum number of products to return (default 500, max 1000)
+ * @param args.includeInactive - Whether to include deactivated products (default: false)
+ * @returns Array of the provider's products (empty array if unauthenticated)
+ */
 export const listOwn = query({
   args: {
     limit: v.optional(v.number()),
@@ -148,7 +176,12 @@ export const listOwn = query({
   }
 });
 
-// Search within provider catalog (VAL-CATALOG-010)
+/**
+ * Search within the authenticated provider's own product catalog.
+ * Performs case-insensitive matching against name, brand, and sourceRowId.
+ * @param args.query - Search query string
+ * @returns Array of matching active products belonging to the provider
+ */
 export const searchOwn = query({
   args: {
     query: v.string(),
@@ -191,6 +224,12 @@ export const searchOwn = query({
 // Mutations (RF-004) — require auth, products scoped to provider
 // ============================================================================
 
+/**
+ * Create a new product for the authenticated provider.
+ * Validates all fields including runtime checks for enum values, price ranges, and cross-field consistency.
+ * @param args - Product fields (name, brand, presentation, price, category, tags, etc.)
+ * @returns The ID of the newly created product document
+ */
 export const create = mutation({
   args: {
     name: v.string(),
@@ -316,6 +355,12 @@ export const create = mutation({
 // Internal queries (used by ingestion pipeline)
 // ============================================================================
 
+/**
+ * List all products belonging to a specific ingestion run (internal query).
+ * Used by the pipeline to determine which batches have already been processed.
+ * @param args.ingestionRunId - The ingestion run ID to filter by
+ * @returns Array of product documents from the specified ingestion run
+ */
 export const listByIngestionRun = internalQuery({
   args: {
     ingestionRunId: v.id("ingestionRuns"),
@@ -328,10 +373,12 @@ export const listByIngestionRun = internalQuery({
   },
 });
 
-// ============================================================================
-// Product detail (RF-008) — public, any authenticated user can view
-// ============================================================================
-
+/**
+ * Get a single product by ID for public product detail view.
+ * Only returns active products; returns null for missing or deactivated products.
+ * @param args.id - The product document ID
+ * @returns The product document or null if not found or inactive
+ */
 export const getProduct = query({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
@@ -344,6 +391,12 @@ export const getProduct = query({
   },
 });
 
+/**
+ * Delete a product owned by the authenticated provider.
+ * Validates ownership before deletion. Logs the operation via structured logger.
+ * @param args.id - The product document ID to delete
+ * @returns The result of the delete operation
+ */
 export const remove = mutation({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
@@ -373,6 +426,14 @@ export const remove = mutation({
 // Inline edit — provider updates individual product fields (VAL-CATALOG-002, VAL-CATALOG-005)
 // ============================================================================
 
+/**
+ * Update individual fields on a product owned by the authenticated provider.
+ * Only modifies fields that are explicitly provided in the arguments.
+ * Logs the operation via structured logger.
+ * @param args.id - The product document ID to update
+ * @param args - Partial product fields to update (name, brand, presentation, price, category, subcategory, tags)
+ * @returns Object with success status
+ */
 export const updateProduct = mutation({
   args: {
     id: v.id("products"),
@@ -440,6 +501,11 @@ export const updateProduct = mutation({
 // Batch publish — set all needs_review products to ok (VAL-CATALOG-004)
 // ============================================================================
 
+/**
+ * Batch publish all products with "needs_review" status to "ok" for the authenticated provider.
+ * Sets reviewStatus to "ok" and updates the updatedAt timestamp for each product.
+ * @returns Object with published count and total needs_review count
+ */
 export const batchPublishAll = mutation({
   args: {},
   handler: async (ctx, _args) => {
@@ -480,6 +546,12 @@ export const batchPublishAll = mutation({
 // Internal mutations for pipeline batch operations
 // ============================================================================
 
+/**
+ * Batch insert products from the pipeline (internal mutation).
+ * Used by the ingestion pipeline to persist normalized product data.
+ * @param args.products - Array of product objects to insert
+ * @returns Array of newly created product document IDs
+ */
 export const batchInsertProducts = internalMutation({
   args: {
     products: v.array(v.object({
@@ -522,6 +594,12 @@ export const batchInsertProducts = internalMutation({
   },
 });
 
+/**
+ * Delete all products belonging to a specific ingestion run (internal mutation).
+ * Used for cleanup when retrying or rolling back an ingestion.
+ * @param args.ingestionRunId - The ingestion run ID whose products should be deleted
+ * @returns The number of products deleted
+ */
 export const deleteByIngestionRun = internalMutation({
   args: {
     ingestionRunId: v.id("ingestionRuns"),
@@ -545,6 +623,14 @@ export const deleteByIngestionRun = internalMutation({
 // Batch price update — update prices for multiple products at once (VAL-CATALOG-006)
 // ============================================================================
 
+/**
+ * Batch update prices for multiple products owned by the authenticated provider.
+ * Supports percentage adjustment or fixed price replacement.
+ * @param args.productIds - Array of product document IDs to update (max 500)
+ * @param args.mode - "percentage" for relative change or "fixed" for absolute value
+ * @param args.value - Percentage change (e.g., 10 for +10%, -5 for -5%) or fixed price amount
+ * @returns Object with the number of products actually updated
+ */
 export const batchPriceUpdate = mutation({
   args: {
     productIds: v.array(v.id("products")),
@@ -609,6 +695,13 @@ export const batchPriceUpdate = mutation({
 // Toggle active — soft delete / reactivate (VAL-CATALOG-007, VAL-CATALOG-008)
 // ============================================================================
 
+/**
+ * Toggle a product's active status for soft delete / reactivation.
+ * Only the product owner can change the active status.
+ * @param args.id - The product document ID to toggle
+ * @param args.active - The new active status (true = active, false = soft-deleted)
+ * @returns Object with success status and the new active value
+ */
 export const toggleActive = mutation({
   args: {
     id: v.id("products"),
@@ -643,6 +736,11 @@ export const toggleActive = mutation({
 // Export catalog — get all active products for export (VAL-CATALOG-011)
 // ============================================================================
 
+/**
+ * Export the authenticated provider's active product catalog as flat data.
+ * Returns simplified product records suitable for CSV/Excel export.
+ * @returns Array of simplified product objects with export-friendly field names
+ */
 export const getExportData = query({
   args: {},
   handler: async (ctx, _args) => {
@@ -678,6 +776,12 @@ export const getExportData = query({
 // Statistics tracking — view count and search appearance increments
 // ============================================================================
 
+/**
+ * Increment the view count for a single product.
+ * Used to track product popularity for statistics.
+ * @param args.id - The product document ID
+ * @returns Object with success status and the new view count
+ */
 export const incrementViewCount = mutation({
   args: { id: v.id("products") },
   handler: async (ctx, args) => {
@@ -698,6 +802,12 @@ export const incrementViewCount = mutation({
   },
 });
 
+/**
+ * Increment the search appearance count for multiple products.
+ * Used to track how often products appear in search results.
+ * @param args.ids - Array of product document IDs to increment
+ * @returns Object with success status and the number of products updated
+ */
 export const incrementSearchAppearances = mutation({
   args: { ids: v.array(v.id("products")) },
   handler: async (ctx, args) => {

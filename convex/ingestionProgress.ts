@@ -2,6 +2,11 @@ import { internalMutation, internalQuery, mutation, query } from "./_generated/s
 import { v } from "convex/values";
 import { checkRateLimit } from "./lib/rateLimiter";
 
+/**
+ * Create a new ingestion run record for the authenticated provider.
+ * Initializes with "pending" status and 0% progress.
+ * @returns The ID of the newly created ingestionRun document
+ */
 export const createRun = mutation({
   args: {},
   handler: async (ctx) => {
@@ -24,6 +29,12 @@ export const createRun = mutation({
   },
 });
 
+/**
+ * Get an ingestion run by ID for the authenticated provider.
+ * Only returns the run if it belongs to the requesting provider.
+ * @param args.ingestionId - The ingestion run document ID
+ * @returns The ingestion run document or null if not found or unauthorized
+ */
 export const get = query({
   args: {
     ingestionId: v.id("ingestionRuns"),
@@ -43,6 +54,12 @@ export const get = query({
   },
 });
 
+/**
+ * Get the full ingestion state including stored metadata and rows JSON (internal query).
+ * Used by the batch processing pipeline to retrieve intermediate state.
+ * @param args.ingestionId - The ingestion run document ID
+ * @returns The full ingestion run document with all stored fields
+ */
 export const getIngestionState = internalQuery({
   args: { ingestionId: v.id("ingestionRuns") },
   handler: async (ctx, args) => {
@@ -50,6 +67,14 @@ export const getIngestionState = internalQuery({
   },
 });
 
+/**
+ * Update an ingestion run's progress and state fields (internal mutation).
+ * Validates that the run belongs to the specified provider before updating.
+ * @param args.ingestionId - The ingestion run document ID
+ * @param args.providerId - The provider ID for ownership verification
+ * @param args - Partial fields to update (status, progressPercent, message, batch info, result counters, etc.)
+ * @returns The updated ingestion run document
+ */
 export const updateInternal = internalMutation({
   args: {
     ingestionId: v.id("ingestionRuns"),
@@ -100,6 +125,13 @@ export const updateInternal = internalMutation({
   },
 });
 
+/**
+ * Find recent ingestion runs by provider and file hash (internal query).
+ * Used for duplicate upload detection within a 24-hour window.
+ * @param args.providerId - The provider ID to search for
+ * @param args.fileSha256 - The SHA-256 hash of the uploaded file
+ * @returns Array of matching ingestion run documents (empty if no recent duplicates)
+ */
 export const findByProviderAndHash = internalQuery({
   args: {
     providerId: v.string(),

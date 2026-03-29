@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
+/** Zod schema for page-level metadata within a catalog document. */
 export const PageMetadataSchema = z.object({
   pageNumber: z.number().int().min(1),
   layoutType: z.enum([
@@ -28,6 +29,7 @@ export const PageMetadataSchema = z.object({
 
 export type PageMetadata = z.infer<typeof PageMetadataSchema>;
 
+/** Zod schema for a named section within a catalog document. */
 export const SectionMetadataSchema = z.object({
   title: z.string(),
   startPage: z.number().int().min(1),
@@ -38,6 +40,7 @@ export const SectionMetadataSchema = z.object({
 
 export type SectionMetadata = z.infer<typeof SectionMetadataSchema>;
 
+/** Zod schema for the top-level document metadata extracted in Stage 1. */
 export const DocumentMetadataSchema = z.object({
   documentType: z.enum(["price-list", "catalog", "invoice", "order-form", "unknown"]),
   language: z.string().default("es"),
@@ -56,6 +59,7 @@ export const DocumentMetadataSchema = z.object({
 
 export type DocumentMetadata = z.infer<typeof DocumentMetadataSchema>;
 
+/** Zod schema for a single row extracted from a catalog page in Stage 2. */
 export const DocumentRowSchema = z.object({
   rowId: z.string(),
   rowIndex: z.number().int().min(1),
@@ -67,6 +71,7 @@ export const DocumentRowSchema = z.object({
 
 export type DocumentRow = z.infer<typeof DocumentRowSchema>;
 
+/** Zod schema for a page grouping of rows within Stage 2 output. */
 export const DocumentPageRowsSchema = z.object({
   pageNumber: z.number().int().min(1),
   pageSummary: z.string().optional(),
@@ -75,6 +80,7 @@ export const DocumentPageRowsSchema = z.object({
 
 export type DocumentPageRows = z.infer<typeof DocumentPageRowsSchema>;
 
+/** Zod schema for the complete Stage 2 row-based document representation. */
 export const DocumentRowsSchema = z.object({
   pages: z.array(DocumentPageRowsSchema),
   totalRowCount: z.number().int().nonnegative(),
@@ -82,6 +88,7 @@ export const DocumentRowsSchema = z.object({
 
 export type DocumentRows = z.infer<typeof DocumentRowsSchema>;
 
+/** Zod schema for packaging information of an extracted product. */
 export const PackagingInfoSchema = z.object({
   packagingType: z.enum([
     "bottle",
@@ -103,6 +110,7 @@ export const PackagingInfoSchema = z.object({
 
 export type PackagingInfo = z.infer<typeof PackagingInfoSchema>;
 
+/** Zod schema for price interpretation of an extracted product. */
 export const PriceInterpretationSchema = z.object({
   amount: z.number().positive(),
   type: z.enum(["per-pack", "per-unit", "per-kg", "per-liter", "wholesale", "retail", "unknown"]),
@@ -111,9 +119,11 @@ export const PriceInterpretationSchema = z.object({
 
 export type PriceInterpretation = z.infer<typeof PriceInterpretationSchema>;
 
+/** Zod enum schema for product extraction status values. */
 export const ProductExtractionStatusSchema = z.enum(["ok", "needs_review"]);
 export type ProductExtractionStatus = z.infer<typeof ProductExtractionStatusSchema>;
 
+/** Zod schema for a single extracted product from Stage 3 batch processing. */
 export const ProductExtractionSchema = z.object({
   sourceRowId: z.string(),
   rawText: z.string().min(1),
@@ -131,6 +141,7 @@ export const ProductExtractionSchema = z.object({
 
 export type ProductExtraction = z.infer<typeof ProductExtractionSchema>;
 
+/** Zod schema for the batch context metadata included in Stage 3 responses. */
 export const ProductBatchContextSchema = z.object({
   batchId: z.string(),
   batchIndex: z.number().int().nonnegative(),
@@ -141,6 +152,7 @@ export const ProductBatchContextSchema = z.object({
 
 export type ProductBatchContext = z.infer<typeof ProductBatchContextSchema>;
 
+/** Zod schema for the complete Stage 3 batch response containing extracted products and context. */
 export const ProductBatchResponseSchema = z.object({
   items: z.array(ProductExtractionSchema),
   batchContext: ProductBatchContextSchema,
@@ -150,25 +162,32 @@ export type ProductBatchResponse = z.infer<typeof ProductBatchResponseSchema>;
 
 type JsonSchema = Record<string, unknown>;
 
+/** JSON Schema (OpenAPI 3) for DocumentMetadata, derived from the Zod schema. */
 export const DocumentMetadataJsonSchema = zodToJsonSchema(DocumentMetadataSchema as never, {
   name: "DocumentMetadata",
   target: "openApi3",
 }) as JsonSchema;
 
+/** JSON Schema (OpenAPI 3) for DocumentRows, derived from the Zod schema. */
 export const DocumentRowsJsonSchema = zodToJsonSchema(DocumentRowsSchema as never, {
   name: "DocumentRows",
   target: "openApi3",
 }) as JsonSchema;
 
+/** JSON Schema (OpenAPI 3) for ProductBatchResponse, derived from the Zod schema. */
 export const ProductBatchResponseJsonSchema = zodToJsonSchema(ProductBatchResponseSchema as never, {
   name: "ProductBatchResponse",
   target: "openApi3",
 }) as JsonSchema;
 
+/** JSON Schema for Stage 1 document metadata extraction (alias for DocumentMetadataJsonSchema). */
 export const DOCUMENT_METADATA_JSON_SCHEMA = DocumentMetadataJsonSchema;
+/** JSON Schema for Stage 2 row extraction (alias for DocumentRowsJsonSchema). */
 export const DOCUMENT_ROWS_JSON_SCHEMA = DocumentRowsJsonSchema;
+/** JSON Schema for Stage 3 batch product extraction (alias for ProductBatchResponseJsonSchema). */
 export const PRODUCT_BATCH_JSON_SCHEMA = ProductBatchResponseJsonSchema;
 
+/** System prompt for Stage 1: Extract document metadata from an uploaded catalog file. */
 export const DOCUMENT_METADATA_PROMPT = `
 You are analyzing a provider catalog for a B2B ingestion system.
 
@@ -204,6 +223,7 @@ Be precise. Do not invent certainty. If unclear, use ambiguityNotes.
 Return JSON only, following the schema.
 `;
 
+/** Function that generates the Stage 2 prompt for row-based document extraction. */
 export const DOCUMENT_ROWS_PROMPT = (metadata: DocumentMetadata) => `
 You are converting an uploaded catalog into a readable row-based representation.
 
@@ -238,6 +258,7 @@ For each row return:
 Return JSON only, following the schema.
 `;
 
+/** Function that generates the Stage 3 prompt for batch product normalization. */
 export const PRODUCT_BATCH_PROMPT = (
   metadata: DocumentMetadata,
   pageMetadata: PageMetadata[],
