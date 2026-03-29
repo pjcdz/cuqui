@@ -3,7 +3,8 @@
 import { CatalogUpload } from "@/components/upload-catalog";
 import { ProductsTable } from "@/components/products-table";
 import { ProductSearch } from "@/components/product-search";
-import { TreeNavigation } from "@/components/tree-navigation";
+import { TreeNavigation, EMPTY_TREE_FILTER } from "@/components/tree-navigation";
+import type { TreeFilter } from "@/components/tree-navigation";
 import { Toaster } from "@/components/ui/sonner";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -11,36 +12,36 @@ import { useState, useMemo } from "react";
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [treeFilter, setTreeFilter] = useState<TreeFilter>({ ...EMPTY_TREE_FILTER });
 
-  // Single subscription to products
   const allProducts = useQuery(api.products.list, {});
 
-  // Client-side filtering (single source of truth)
+  // Combined filtering: tree filter (field-based) + text search
   const filteredProducts = useMemo(() => {
     if (!allProducts) return [];
 
     return allProducts.filter((product) => {
-      // Tag filtering (AND logic)
-      const hasAllTags = selectedTags.every((tag) =>
-        product.tags.includes(tag)
-      );
-      if (!hasAllTags) return false;
+      // Tree filter: category → subcategory → brand (AND logic, RF-012)
+      if (treeFilter.category !== null && product.category !== treeFilter.category)
+        return false;
+      if (treeFilter.subcategory !== null && product.subcategory !== treeFilter.subcategory)
+        return false;
+      if (treeFilter.brand !== null && product.brand !== treeFilter.brand)
+        return false;
 
-      // Search filtering
+      // Text search (RF-010)
       if (!searchQuery.trim()) return true;
 
-      const query = searchQuery.toLowerCase();
-      const nameMatch = product.name.toLowerCase().includes(query);
-      const brandMatch = product.brand.toLowerCase().includes(query);
-      const categoryMatch = product.category.toLowerCase().includes(query);
-      const tagsMatch = product.tags.some((tag) =>
-        tag.toLowerCase().includes(query)
+      const q = searchQuery.toLowerCase();
+      return (
+        product.name.toLowerCase().includes(q) ||
+        product.brand.toLowerCase().includes(q) ||
+        product.category.toLowerCase().includes(q) ||
+        product.tags.some((tag: string) => tag.toLowerCase().includes(q))
       );
-
-      return nameMatch || brandMatch || categoryMatch || tagsMatch;
     });
-  }, [allProducts, searchQuery, selectedTags]);
+  }, [allProducts, searchQuery, treeFilter]);
+
   return (
     <div className="min-h-screen bg-background">
       <Toaster />
@@ -64,8 +65,8 @@ export default function Home() {
           />
           <TreeNavigation
             allProducts={allProducts || []}
-            selectedTags={selectedTags}
-            onTagsChange={setSelectedTags}
+            filter={treeFilter}
+            onFilterChange={setTreeFilter}
             filteredCount={filteredProducts.length}
           />
         </div>
