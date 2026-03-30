@@ -1,14 +1,14 @@
 commands:
   install: npm install
-  build: npm run build
-  test: npm run test
-  lint: npm run lint
-  typecheck: npx tsc --noEmit
+  build: node_modules\.bin\next.cmd build
+  test: node_modules\.bin\vitest.cmd run
+  lint: node_modules\.bin\eslint.cmd .
+  typecheck: node_modules\.bin\tsc.cmd --noEmit
 
 services:
   web:
-    start: npm run dev
-    stop: lsof -ti :3000 | xargs kill 2>/dev/null || true
+    start: node_modules\.bin\next.cmd dev
+    stop: "Stop-Process -Name node -ErrorAction SilentlyContinue"
     healthcheck: curl -sf http://localhost:3000
     port: 3000
     depends_on: []

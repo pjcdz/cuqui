@@ -1,0 +1,7 @@
+[
+  {
+    "path": ".next/**/*.js",
+    "limit": "500 KB",
+    "gzip": true
+  }
+]

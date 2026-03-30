@@ -146,3 +146,21 @@ Provider product management uses `@tanstack/react-table` for sortable, filterabl
 - `ctx.auth.getUserIdentity()` for Convex function auth
 - `identity.tokenIdentifier` as provider ID
 - Role-based access via Clerk metadata (`proveedor` / `comercio`)
+
+### Encryption (RNF-008)
+- `convex/lib/encryption.ts` — AES-256-GCM encrypt/decrypt using Node.js `crypto`
+- Provider email and businessName encrypted on write, decrypted on read
+- Key from `ENCRYPTION_KEY` env var; graceful passthrough if missing
+- IV and authTag stored alongside ciphertext as hex strings
+
+### Backups (RNF-028)
+- `convex/crons.ts` — Daily cron creates backup snapshot
+- `backups` table with 30-day TTL for automatic retention
+- `GET /api/backups` — List available backups
+- `GET /api/backups/[id]` — Download specific backup as JSON
+- Backup data includes providers (encrypted fields as-is) + products
+
+### Health Monitoring (RNF-029)
+- `GET /api/health` — Returns system status with Convex connectivity check
+- Returns `{ status: "ok"|"degraded", timestamp, components: { convex } }`
+- Convex cron periodically records health check results

@@ -10,6 +10,7 @@ Environment variables, external dependencies, and setup notes.
 - `CLERK_FRONTEND_API_URL` - Clerk frontend API URL
 - `GEMINI_API_KEY` - Google Gemini API key for document processing
 - `CONVEX_DEPLOYMENT` - Convex deployment name
+- `ENCRYPTION_KEY` - 32-byte hex string for AES-256-GCM encryption (NEW — provider email/businessName encryption)
 
 ## External Services
 
